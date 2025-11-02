@@ -1,0 +1,22 @@
+# 機密情報を含むファイル
+printLabels_with_secrets.js
+.clasp.json
+
+# 環境変数
+.env
+.env.local
+
+# OS関連
+.DS_Store
+Thumbs.db
+
+# エディタ関連
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ログファイル
+*.log
+
