@@ -132,15 +132,14 @@ function fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken) {
     
     if (!fnsku || fnsku === '') {
       console.log(`FNSKU is empty for ${msku}, fetching...`);
+      // getFnskuは必ずfnSkuを返すか、エラーをスローする
       const fetchedFnsku = fnskuGetter.getFnsku(msku);
       
-      if (fetchedFnsku) {
-        console.log(`Fetched FNSKU for ${msku}: ${fetchedFnsku}`);
-        const col = fnskuColumn + 1;
-        if (rowNum && col >= 1) {
-          sheet.sheet.getRange(rowNum, col).setValue(fetchedFnsku);
-          row[fnskuColumn] = fetchedFnsku; // データ配列も更新
-        }
+      console.log(`Fetched FNSKU for ${msku}: ${fetchedFnsku}`);
+      const col = fnskuColumn + 1;
+      if (rowNum && col >= 1) {
+        sheet.sheet.getRange(rowNum, col).setValue(fetchedFnsku);
+        row[fnskuColumn] = fetchedFnsku; // データ配列も更新
       }
     }
   }

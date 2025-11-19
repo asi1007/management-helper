@@ -137,7 +137,7 @@ class InboundPlanCreator{
 class FnskuGetter{
   constructor(authToken){
     this.authToken = authToken;
-    this.LISTINGS_API_URL = "https://sellingpartnerapi-fe.amazon.com/listings/2021-08-01/items/APS8L6SC4MEPF";
+    this.LISTINGS_API_URL = "https://sellingpartnerapi-fe.amazon.com/listings/2021-08-01/items/APS8L6SC4MEPF/";
   }
 
   getFnsku(msku) {
@@ -150,47 +150,34 @@ class FnskuGetter{
       }
     };
 
-    const url = `${this.LISTINGS_API_URL}?marketplaceIds=A1VC38T7YXB528&sellerSku=${msku}`;
+    const url = `${this.LISTINGS_API_URL}${msku}?marketplaceIds=A1VC38T7YXB528`;
     const response = UrlFetchApp.fetch(url, options);
 
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
-
     if (responseCode !== 200) {
-      console.error(`Failed to get FNSKU for ${msku}: ${responseText}`);
-      return null;
+      throw new Error(`FNSKU取得に失敗しました (SKU: ${msku}, status: ${responseCode}): ${responseText}`);
     }
 
+    // summariesからfnSkuを取得
     const json = JSON.parse(responseText);
-
     if (json.summaries && json.summaries.length > 0) {
       const summary = json.summaries[0];
       if (summary.fnSku) {
         return summary.fnSku;
       }
-      if (summary.asin) {
-        return summary.asin;
-      }
     }
 
-    if (json.items && json.items.length > 0) {
-      const item = json.items.find(entry => entry.sku === msku);
-      if (item && item.summaries && item.summaries.length > 0) {
-        const summary = item.summaries[0];
-        if (summary.fnSku) {
-          return summary.fnSku;
-        }
-        if (summary.asin) {
-          return summary.asin;
-        }
-      }
-    }
-
+    // fnSkuが見つからない場合はエラーをスロー
+    const errorDetails = [];
     if (json.issues && json.issues.length > 0) {
-      console.warn(`Issues found for ${msku}: ${json.issues.length} issue(s)`);
+      errorDetails.push(`Issues: ${JSON.stringify(json.issues)}`);
     }
-
-    return msku;
+    if (json.summaries && json.summaries.length > 0) {
+      errorDetails.push(`Summary found but no fnSku: ${JSON.stringify(json.summaries[0])}`);
+    }
+    
+    throw new Error(`FNSKUが見つかりませんでした (SKU: ${msku})${errorDetails.length > 0 ? ': ' + errorDetails.join(', ') : ''}`);
   }
 }
 
