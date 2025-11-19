@@ -293,22 +293,37 @@ class Sheet{
   }
 
   writeDate(columnName, dateValue){
-    const date = dateValue || new Date();
-    const dateOnly = new Date(date);
-    dateOnly.setHours(0, 0, 0, 0);
-    this.writeColumn(columnName, dateOnly);
+    try {
+      const date = dateValue || new Date();
+      const dateOnly = new Date(date);
+      dateOnly.setHours(0, 0, 0, 0);
+      this.writeColumn(columnName, dateOnly);
+      console.log(`${columnName}を${this.rowNumbers.length}行に書き込みました`);
+    } catch (e) {
+      console.warn(`${columnName}列への書き込みに失敗しました: ${e.message}`);
+      throw e;
+    }
   }
 
   writePlanLinks(link, columnName){
     if (!link) {
+      console.warn(`プランリンクが空のため、${columnName}列への書き込みをスキップしました`);
       return;
     }
-    const columnIndex = this.setting.get(columnName);
-    for (let i = 0; i < this.rowNumbers.length; i++) {
-      const rowNum = this.rowNumbers[i];
-      if (rowNum) {
-        this.writePlanLink(link, rowNum, columnIndex);
+    try {
+      const columnIndex = this.setting.get(columnName);
+      let successCount = 0;
+      for (let i = 0; i < this.rowNumbers.length; i++) {
+        const rowNum = this.rowNumbers[i];
+        if (rowNum) {
+          this.writePlanLink(link, rowNum, columnIndex);
+          successCount++;
+        }
       }
+      console.log(`${columnName}リンクを${successCount}行に書き込みました`);
+    } catch (e) {
+      console.warn(`${columnName}列への書き込みに失敗しました: ${e.message}`);
+      throw e;
     }
   }
 }

@@ -148,12 +148,8 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
   const planResult = planCreator.createPlan(items);
 
   // プランリンクと発送日を書き込み
-  try {
-    sheet.writePlanLinks(planResult.link, "納品プラン");
-    sheet.writeDate("発送日", new Date());
-  } catch (e) {
-    console.warn(`プランリンクまたは発送日列への書き込みに失敗しました: ${e.message}`);
-  }
+  sheet.writePlanLinks(planResult.link, "納品プラン");
+  sheet.writeDate("発送日", new Date());
 
   return planResult;
 }
