@@ -1,20 +1,5 @@
-function getEnvConfig() {
-  const properties = PropertiesService.getScriptProperties();
-  const getEnv = (key, defaultValue = null) => {
-    const value = properties.getProperty(key);
-    return value !== null ? value : defaultValue;
-  };
-
-  return {
-    SHEET_ID: getEnv('SHEET_ID', 'YOUR_SHEET_ID_HERE'),
-    INSTRUCTION_SHEET_NAME: getEnv('INSTRUCTION_SHEET_NAME', 'yiwu指示書'),
-    PURCHASE_SHEET_NAME: getEnv('PURCHASE_SHEET_NAME', '仕入管理'),
-    API_KEY: getEnv('API_KEY', 'YOUR_API_KEY_HERE'),
-    API_SECRET: getEnv('API_SECRET', 'YOUR_API_SECRET_HERE'),
-    REFRESH_TOKEN: getEnv('REFRESH_TOKEN', 'YOUR_REFRESH_TOKEN_HERE'),
-    KEEPA_API_KEY: getEnv('KEEPA_API_KEY', 'YOUR_KEEPA_API_KEY_HERE')
-  };
-}
+// getEnvConfigはutilities.jsに移動しました
+// 後方互換性のため、このファイルは残していますが、utilities.jsを参照してください
 
 const DEFAULT_MARKETPLACE_ID = 'A1VC38T7YXB528';
 

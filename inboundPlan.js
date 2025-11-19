@@ -73,24 +73,7 @@ function pickOwnerValue(row, indices, fallback, defaultIfUnknown) {
   return fallback;
 }
 
-/**
- * 設定から列インデックスを取得
- * @param {SettingSheet} setting - 設定オブジェクト
- * @param {Array<string>} keyCandidates - キーの候補配列
- * @returns {Array<number>} 列インデックスの配列
- */
-function getColumnIndices(setting, keyCandidates) {
-  const indices = [];
-  if (setting.getOptional) {
-    keyCandidates.forEach(key => {
-      const idx = setting.getOptional(key);
-      if (idx !== null) {
-        indices.push(idx);
-      }
-    });
-  }
-  return indices;
-}
+// getColumnIndicesはSettingSheetクラスのメソッドに統合されました
 
 /**
  * 複数行で異なるオーナー値を統合
@@ -200,11 +183,12 @@ function writePlanLinksToRows(sheet, data, skuIndex, planColumnIndex, link) {
  * @returns {Object} プラン作成結果
  */
 function createInboundPlanForRows(sheet, setting, data, accessToken) {
-  const planColumnIndex = setting.get("納品プラン");
-  const skuIndex = setting.get("sku");
-  const quantityIndex = setting.get("数量");
-  const labelOwnerIndices = getColumnIndices(setting, ["labelOwner", "ラベル担当"]);
-  const prepOwnerIndices = getColumnIndices(setting, ["prepOwner", "梱包者"]);
+  // 必須設定を一度に取得
+  const { "納品プラン": planColumnIndex, "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["納品プラン", "sku", "数量"]);
+  
+  // オプション設定を一度に取得
+  const labelOwnerIndices = setting.getColumnIndices(["labelOwner", "ラベル担当"]);
+  const prepOwnerIndices = setting.getColumnIndices(["prepOwner", "梱包者"]);
 
   const labelOwnerFallback = 'SELLER';
   const prepOwnerFallback = prepOwnerIndices.length > 0 ? 'NONE' : 'SELLER';
@@ -247,11 +231,11 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
  * @returns {Object} プラン作成結果
  */
 function createInboundPlanFromActiveRows() {
-  const config = getEnvConfig();
-  const setting = new SettingSheet();
+  const { config, setting, accessToken } = getConfigSettingAndToken();
+
   const sheet = new Sheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
   const data = sheet.getActiveRowData();
-  const accessToken = getAuthToken();
+
   const result = createInboundPlanForRows(sheet, setting, data, accessToken);
   console.log(`Inbound plan created: inboundPlanId=${result.inboundPlanId}, operationId=${result.operationId}, link=${result.link}`);
   return result;

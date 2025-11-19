@@ -1,4 +1,5 @@
-/* exported Downloader, InboundPlanCreator, FnskuGetter, SettingSheet, Sheet */
+/* exported Downloader, InboundPlanCreator, FnskuGetter, Sheet */
+// SettingSheetはutilities.jsに移動しました
 
 class Downloader{
   constructor(authToken){
@@ -181,42 +182,7 @@ class FnskuGetter{
   }
 }
 
-class SettingSheet{
-  constructor(){
-    const config = getEnvConfig();
-    this.sheet = SpreadsheetApp.openById(config.SHEET_ID).getSheetByName("設定");
-    const sheetData = this.sheet.getRange(1, 1, this.sheet.getLastRow(), 2).getValues();
-    this.data = {};
-    for (let i = 0; i < sheetData.length; i++) {
-      this.data[sheetData[i][0]] = sheetData[i][1];
-    }
-  }
-
-  get(name){
-    const value = this.data[name];
-    if (value === undefined || value === null || value === '') {
-      throw new Error(`設定 "${name}" が見つかりません`);
-    }
-    const columnIndex = value - 1;
-    if (columnIndex < 0) {
-      throw new Error(`設定 "${name}" の列番号が無効です: ${columnIndex}`);
-    }
-    return columnIndex;
-  }
-
-  getOptional(name){
-    const value = this.data[name];
-    if (value === undefined || value === null || value === '') {
-      return null;
-    }
-    const columnIndex = value - 1;
-    if (columnIndex < 0) {
-      console.warn(`設定 "${name}" の列番号が無効です: ${columnIndex}`);
-      return null;
-    }
-    return columnIndex;
-  }
-}
+// SettingSheetクラスはutilities.jsに移動しました
 
 class Sheet{
   constructor(sheetID, sheetName, setting){

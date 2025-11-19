@@ -1,20 +1,5 @@
-function getAuthToken() {
-  const config = getEnvConfig();
-  const url = "https://api.amazon.com/auth/o2/token";
-  const payload = {
-    'grant_type': 'refresh_token',
-    'refresh_token': config.REFRESH_TOKEN,
-    'client_id': config.API_KEY,
-    'client_secret': config.API_SECRET
-  };
-  const options = {
-    method: 'post',
-    payload: payload
-  };
-  const response = UrlFetchApp.fetch(url, options);
-  const json = JSON.parse(response.getContentText());
-  return json.access_token;
-}
+// getAuthTokenはutilities.jsに移動しました
+// 後方互換性のため、このファイルは残していますが、utilities.jsを参照してください
 
 
 

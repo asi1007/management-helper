@@ -89,10 +89,10 @@ function makeOrderInstructionSheet(rows) {
 /**
  * ラベルPDFを生成
  * @param {Array<Object>} skuNums - [{msku: string, quantity: number}]の形式の配列
+ * @param {string} accessToken - アクセストークン
  * @returns {string} ラベルPDFのURL
  */
-function loadLabelPDF(skuNums) {
-  const accessToken = getAuthToken();
+function loadLabelPDF(skuNums, accessToken) {
   const skuDownloader = new Downloader(accessToken);
   const now = new Date();
   const datetimeStr = Utilities.formatDate(now, 'JST', 'yyyy-MM-dd');
@@ -213,8 +213,7 @@ function writePlanNameToRows(sheet, data, setting) {
  * ラベルと指示書を生成
  */
 function generateLabelsAndInstructions() {
-  const config = getEnvConfig();
-  const setting = new SettingSheet();
+  const { config, setting, accessToken } = getConfigSettingAndToken();
   const sheet = new Sheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
   const data = sheet.getActiveRowData();
   sheet.writeRequestDate();
@@ -222,7 +221,6 @@ function generateLabelsAndInstructions() {
   // FNSKUが空白の場合はSP-APIから取得
   const fnskuColumn = setting.get("fnsku");
   const skuColumn = setting.get("sku");
-  const accessToken = getAuthToken();
   fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken);
 
   if (data.length === 0) {
@@ -232,7 +230,7 @@ function generateLabelsAndInstructions() {
   try {
     // ラベルPDFを生成
     const finalSkuNums = aggregateSkusForLabels(data, setting);
-    const labelURL = loadLabelPDF(finalSkuNums);
+    const labelURL = loadLabelPDF(finalSkuNums, accessToken);
     sheet.writelabelURL(labelURL, 2);
     
     // プラン別名列に日付と納品分類を書き込む
