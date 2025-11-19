@@ -254,15 +254,9 @@ class Sheet{
   }
 
   writeRequestDate(){
-    const column = this.setting.get("依頼日") + 1;
     const dateOnly = new Date();
     dateOnly.setHours(0, 0, 0, 0);
-    for(let i = 0; i < this.data.length; i++){
-      const rowNum = this.rowNumbers[i];
-      if (rowNum) {
-        this.sheet.getRange(rowNum, column).setValue(dateOnly);
-      }
-    }
+    this.writeColumn("依頼日", dateOnly);
   }
 
   writelabelURL(url, rowNum){
@@ -288,15 +282,32 @@ class Sheet{
     this.sheet.getRange(targetRow, targetColumn).setFormula(`=HYPERLINK("${url}", "納品プラン")`);
   }
 
-  writeDate(columnName, dateValue){
+  writeColumn(columnName, value){
     const column = this.setting.get(columnName) + 1;
-    const date = dateValue || new Date();
-    const dateOnly = new Date(date);
-    dateOnly.setHours(0, 0, 0, 0);
     for (let i = 0; i < this.rowNumbers.length; i++) {
       const rowNum = this.rowNumbers[i];
       if (rowNum) {
-        this.sheet.getRange(rowNum, column).setValue(dateOnly);
+        this.sheet.getRange(rowNum, column).setValue(value);
+      }
+    }
+  }
+
+  writeDate(columnName, dateValue){
+    const date = dateValue || new Date();
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+    this.writeColumn(columnName, dateOnly);
+  }
+
+  writePlanLinks(link, columnName){
+    if (!link) {
+      return;
+    }
+    const columnIndex = this.setting.get(columnName);
+    for (let i = 0; i < this.rowNumbers.length; i++) {
+      const rowNum = this.rowNumbers[i];
+      if (rowNum) {
+        this.writePlanLink(link, rowNum, columnIndex);
       }
     }
   }

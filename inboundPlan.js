@@ -115,21 +115,10 @@ function aggregateItemsBySku(data, skuIndex, quantityIndex, labelOwnerIndices, p
   return aggregatedItems;
 }
 
-function writePlanLinksToRows(sheet, data, skuIndex, planColumnIndex, link) {
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const sku = row[skuIndex];
-    const rowNum = sheet.rowNumbers[i];
-    if (!sku || !rowNum) {
-      continue;
-    }
-    sheet.writePlanLink(link, rowNum, planColumnIndex);
-  }
-}
 
 function createInboundPlanForRows(sheet, setting, data, accessToken) {
   // 必須設定を一度に取得
-  const { "納品プラン": planColumnIndex, "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["納品プラン", "sku", "数量"]);
+  const { "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["sku", "数量"]);
   
   // オプション設定を一度に取得
   const labelOwnerIndices = setting.getColumnIndices(["labelOwner", "ラベル担当"]);
@@ -158,14 +147,12 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
   const planCreator = new InboundPlanCreator(accessToken);
   const planResult = planCreator.createPlan(items);
 
-  // プランリンクを各選択行に書き込み
-  writePlanLinksToRows(sheet, data, skuIndex, planColumnIndex, planResult.link);
-
-  // 発送日を書き込み
+  // プランリンクと発送日を書き込み
   try {
+    sheet.writePlanLinks(planResult.link, "納品プラン");
     sheet.writeDate("発送日", new Date());
   } catch (e) {
-    console.warn(`発送日列への書き込みに失敗しました: ${e.message}`);
+    console.warn(`プランリンクまたは発送日列への書き込みに失敗しました: ${e.message}`);
   }
 
   return planResult;
