@@ -1,14 +1,3 @@
-/**
- * 納品プラン作成関連の関数群
- */
-
-/**
- * オーナー値を正規化（AMAZON, SELLER, NONE）
- * @param {*} value - 正規化する値
- * @param {string} fallback - フォールバック値
- * @param {string} defaultIfUnknown - 不明な値の場合のデフォルト値
- * @returns {string} 正規化されたオーナー値
- */
 function normalizeOwner(value, fallback, defaultIfUnknown = 'SELLER') {
   if (value === undefined || value === null || value === '') {
     return fallback;
@@ -53,14 +42,6 @@ function normalizeOwner(value, fallback, defaultIfUnknown = 'SELLER') {
   return fallback;
 }
 
-/**
- * 行データからオーナー値を取得
- * @param {Array} row - 行データ
- * @param {Array<number>} indices - 列インデックスの配列
- * @param {string} fallback - フォールバック値
- * @param {string} defaultIfUnknown - 不明な値の場合のデフォルト値
- * @returns {string} オーナー値
- */
 function pickOwnerValue(row, indices, fallback, defaultIfUnknown) {
   for (const idx of indices) {
     if (idx !== null && idx !== undefined) {
@@ -75,15 +56,6 @@ function pickOwnerValue(row, indices, fallback, defaultIfUnknown) {
 
 // getColumnIndicesはSettingSheetクラスのメソッドに統合されました
 
-/**
- * 複数行で異なるオーナー値を統合
- * @param {string} current - 現在の値
- * @param {string} incoming - 新しい値
- * @param {string} fallback - フォールバック値
- * @param {string} sku - SKU
- * @param {string} label - ラベル名（デバッグ用）
- * @returns {string} 統合された値
- */
 function updateOwner(current, incoming, fallback, sku, label) {
   if (current === incoming) {
     return current;
@@ -98,17 +70,6 @@ function updateOwner(current, incoming, fallback, sku, label) {
   return current;
 }
 
-/**
- * SKUごとにアイテムを集約
- * @param {Array<Array>} data - 行データの配列
- * @param {number} skuIndex - SKU列インデックス
- * @param {number} quantityIndex - 数量列インデックス
- * @param {Array<number>} labelOwnerIndices - ラベル担当列インデックスの配列
- * @param {Array<number>} prepOwnerIndices - 梱包者列インデックスの配列
- * @param {string} labelOwnerFallback - ラベル担当のフォールバック値
- * @param {string} prepOwnerFallback - 梱包者のフォールバック値
- * @returns {Object} SKUをキーとした集約されたアイテムのオブジェクト
- */
 function aggregateItemsBySku(data, skuIndex, quantityIndex, labelOwnerIndices, prepOwnerIndices, labelOwnerFallback, prepOwnerFallback) {
   const aggregatedItems = {};
   
@@ -154,14 +115,6 @@ function aggregateItemsBySku(data, skuIndex, quantityIndex, labelOwnerIndices, p
   return aggregatedItems;
 }
 
-/**
- * プランリンクを各選択行に書き込み
- * @param {Sheet} sheet - シートオブジェクト
- * @param {Array<Array>} data - 行データの配列
- * @param {number} skuIndex - SKU列インデックス
- * @param {number} planColumnIndex - 納品プラン列インデックス
- * @param {string} link - プランリンクURL
- */
 function writePlanLinksToRows(sheet, data, skuIndex, planColumnIndex, link) {
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
@@ -174,14 +127,6 @@ function writePlanLinksToRows(sheet, data, skuIndex, planColumnIndex, link) {
   }
 }
 
-/**
- * 選択された行から納品プランを作成
- * @param {Sheet} sheet - シートオブジェクト
- * @param {SettingSheet} setting - 設定オブジェクト
- * @param {Array<Array>} data - 行データの配列
- * @param {string} accessToken - アクセストークン
- * @returns {Object} プラン作成結果
- */
 function createInboundPlanForRows(sheet, setting, data, accessToken) {
   // 必須設定を一度に取得
   const { "納品プラン": planColumnIndex, "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["納品プラン", "sku", "数量"]);
@@ -226,10 +171,6 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
   return planResult;
 }
 
-/**
- * アクティブな行から納品プランを作成
- * @returns {Object} プラン作成結果
- */
 function createInboundPlanFromActiveRows() {
   const { config, setting, accessToken } = getConfigSettingAndToken();
 
