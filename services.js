@@ -253,79 +253,44 @@ class Sheet{
     return selectedRows;
   }
 
-  writeRequestDate(){
-    const dateOnly = new Date();
-    dateOnly.setHours(0, 0, 0, 0);
-    this.writeColumn("依頼日", dateOnly);
-  }
-
-  writelabelURL(url, rowNum){
-    const targetRow = rowNum || 2;
-    this.sheet.getRange(targetRow, 1).setFormula(`=HYPERLINK("${url}", "ラベルデータ")`);
-  }
-
-  writeInstructionURL(url, rowNum){
-    const targetRow = rowNum || 2;
-    this.sheet.getRange(targetRow, 2).setFormula(`=HYPERLINK("${url}", "指示書")`);
-  }
-
-  writePlanLink(url, rowNum, columnIndex){
-    if (!url) {
-      return;
-    }
-    if (!rowNum || rowNum < 1) {
-      console.warn(`Invalid rowNum for writePlanLink: ${rowNum}`);
-      return;
-    }
-    const targetRow = rowNum;
-    const targetColumn = (columnIndex || 0) + 1;
-    this.sheet.getRange(targetRow, targetColumn).setFormula(`=HYPERLINK("${url}", "納品プラン")`);
-  }
-
   writeColumn(columnName, value){
-    const column = this.setting.get(columnName) + 1;
-    for (let i = 0; i < this.rowNumbers.length; i++) {
-      const rowNum = this.rowNumbers[i];
-      if (rowNum) {
-        this.sheet.getRange(rowNum, column).setValue(value);
-      }
-    }
-  }
-
-  writeDate(columnName, dateValue){
     try {
-      const date = dateValue || new Date();
-      const dateOnly = new Date(date);
-      dateOnly.setHours(0, 0, 0, 0);
-      this.writeColumn(columnName, dateOnly);
-      console.log(`${columnName}を${this.rowNumbers.length}行に書き込みました`);
-    } catch (e) {
-      console.warn(`${columnName}列への書き込みに失敗しました: ${e.message}`);
-      throw e;
-    }
-  }
-
-  writePlanLinks(link, columnName){
-    if (!link) {
-      console.warn(`プランリンクが空のため、${columnName}列への書き込みをスキップしました`);
-      return;
-    }
-    try {
-      const columnIndex = this.setting.get(columnName);
+      const column = this.setting.get(columnName) + 1;
       let successCount = 0;
+      
       for (let i = 0; i < this.rowNumbers.length; i++) {
         const rowNum = this.rowNumbers[i];
         if (rowNum) {
-          this.writePlanLink(link, rowNum, columnIndex);
+          if (typeof value === 'object' && value.type === 'formula') {
+            this.sheet.getRange(rowNum, column).setFormula(value.value);
+          } else {
+            this.sheet.getRange(rowNum, column).setValue(value);
+          }
           successCount++;
         }
       }
-      console.log(`${columnName}リンクを${successCount}行に書き込みました`);
+      console.log(`${columnName}を${successCount}行に書き込みました`);
     } catch (e) {
-      console.warn(`${columnName}列への書き込みに失敗しました: ${e.message}`);
+      console.warn(`${columnName}への書き込みに失敗しました: ${e.message}`);
       throw e;
     }
   }
+
+  writeCell(rowNum, columnName, value){
+    try {
+      const column = this.setting.get(columnName) + 1;
+      if (typeof value === 'object' && value.type === 'formula') {
+        this.sheet.getRange(rowNum, column).setFormula(value.value);
+      } else {
+        this.sheet.getRange(rowNum, column).setValue(value);
+      }
+      console.log(`${rowNum}行目の${columnName}に書き込みました`);
+    } catch (e) {
+      console.warn(`${rowNum}行目の${columnName}への書き込みに失敗しました: ${e.message}`);
+      throw e;
+    }
+  }
+
 }
 
 

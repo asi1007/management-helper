@@ -1,9 +1,5 @@
-/* exported getEnvConfig, SettingSheet, getAuthToken, getConfigAndSetting, getConfigSettingAndToken */
+/* exported getEnvConfig, SettingSheet, getAuthToken, getConfigSettingAndToken */
 
-/**
- * 環境変数をPropertiesServiceから取得
- * @returns {Object} 環境変数のオブジェクト
- */
 function getEnvConfig() {
   const properties = PropertiesService.getScriptProperties();
   const getEnv = (key, defaultValue = null) => {
@@ -22,9 +18,6 @@ function getEnvConfig() {
   };
 }
 
-/**
- * 設定シートから設定値を読み込むクラス
- */
 class SettingSheet{
   constructor(){
     const config = getEnvConfig();
@@ -61,11 +54,6 @@ class SettingSheet{
     return columnIndex;
   }
 
-  /**
-   * 複数の設定を一度に取得（必須）
-   * @param {Array<string>} names - 設定名の配列
-   * @returns {Object} 設定名をキーとした列インデックスのオブジェクト
-   */
   getMultiple(names) {
     const result = {};
     for (const name of names) {
@@ -74,24 +62,6 @@ class SettingSheet{
     return result;
   }
 
-  /**
-   * 複数の設定を一度に取得（オプション）
-   * @param {Array<string>} names - 設定名の配列
-   * @returns {Object} 設定名をキーとした列インデックスのオブジェクト（見つからない場合はnull）
-   */
-  getMultipleOptional(names) {
-    const result = {};
-    for (const name of names) {
-      result[name] = this.getOptional(name);
-    }
-    return result;
-  }
-
-  /**
-   * 複数のキー候補から列インデックスを取得（最初に見つかったものを返す）
-   * @param {Array<string>} keyCandidates - キーの候補配列
-   * @returns {Array<number>} 列インデックスの配列
-   */
   getColumnIndices(keyCandidates) {
     const indices = [];
     for (const key of keyCandidates) {
@@ -104,10 +74,6 @@ class SettingSheet{
   }
 }
 
-/**
- * Amazon SP-APIのアクセストークンを取得
- * @returns {string} アクセストークン
- */
 function getAuthToken() {
   const config = getEnvConfig();
   const url = "https://api.amazon.com/auth/o2/token";
@@ -126,20 +92,6 @@ function getAuthToken() {
   return json.access_token;
 }
 
-/**
- * 環境変数と設定シートを1回の呼び出しで取得
- * @returns {Object} {config: Object, setting: SettingSheet} の形式のオブジェクト
- */
-function getConfigAndSetting() {
-  const config = getEnvConfig();
-  const setting = new SettingSheet();
-  return { config, setting };
-}
-
-/**
- * 環境変数、設定シート、アクセストークンを1回の呼び出しで取得
- * @returns {Object} {config: Object, setting: SettingSheet, accessToken: string} の形式のオブジェクト
- */
 function getConfigSettingAndToken() {
   const config = getEnvConfig();
   const setting = new SettingSheet();

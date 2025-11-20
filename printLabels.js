@@ -4,11 +4,6 @@ const INSTRUCTION_SHEET_TEMPLATE_ID = '1YDBbEgxTnRZRqKi5UUsQAZfCgakdzVKNJtX6cPBZ
 const INSTRUCTION_SHEET_START_ROW = 8;
 const AMAZON_IMAGE_BASE_URL = 'https://images-na.ssl-images-amazon.com/images/I/';
 
-/**
- * Keepa APIから商品画像URLを取得
- * @param {string} asin - ASINコード
- * @returns {string|null} 画像URL、取得できない場合はnull
- */
 function getKeepaProductImage(asin) {
   if (!asin) {
     return null;
@@ -17,7 +12,7 @@ function getKeepaProductImage(asin) {
   const config = getEnvConfig();
   const url = `${KEEPA_API_ENDPOINT}?key=${config.KEEPA_API_KEY}&domain=5&asin=${asin}`;
   const params = {
-    method: 'get',
+      method: 'get',
     muteHttpExceptions: true
   };
   
@@ -49,11 +44,6 @@ function getKeepaProductImage(asin) {
   }
 }
 
-/**
- * 指示書シートを作成
- * @param {Array<Array>} rows - [[fnsku, asin, 数量, 備考, 注文依頼番号]]の形式の配列
- * @returns {string} ダウンロードURL
- */
 function makeOrderInstructionSheet(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('指示書作成対象の行データが空、または不正です');
@@ -86,12 +76,6 @@ function makeOrderInstructionSheet(rows) {
   return `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
 }
 
-/**
- * ラベルPDFを生成
- * @param {Array<Object>} skuNums - [{msku: string, quantity: number}]の形式の配列
- * @param {string} accessToken - アクセストークン
- * @returns {string} ラベルPDFのURL
- */
 function loadLabelPDF(skuNums, accessToken) {
   const skuDownloader = new Downloader(accessToken);
   const now = new Date();
@@ -100,11 +84,6 @@ function loadLabelPDF(skuNums, accessToken) {
   return result.url;
 }
 
-/**
- * 日付をMM/DD形式にフォーマット
- * @param {Date} date - 日付オブジェクト
- * @returns {string} MM/DD形式の文字列
- */
 function formatDateMMDD(date) {
   const month = String(date.getMonth() + 1);
   const day = String(date.getDate());
@@ -113,14 +92,6 @@ function formatDateMMDD(date) {
   return `${monthStr}/${dayStr}`;
 }
 
-/**
- * 空白のFNSKUをSP-APIから取得してシートに書き込む
- * @param {Sheet} sheet - シートオブジェクト
- * @param {Array<Array>} data - 行データの配列
- * @param {number} fnskuColumn - FNSKU列インデックス
- * @param {number} skuColumn - SKU列インデックス
- * @param {string} accessToken - アクセストークン
- */
 function fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken) {
   const fnskuGetter = new FnskuGetter(accessToken);
   
@@ -135,22 +106,16 @@ function fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken) {
       // getFnskuは必ずfnSkuを返すか、エラーをスローする
       const fetchedFnsku = fnskuGetter.getFnsku(msku);
       
-      console.log(`Fetched FNSKU for ${msku}: ${fetchedFnsku}`);
-      const col = fnskuColumn + 1;
+        console.log(`Fetched FNSKU for ${msku}: ${fetchedFnsku}`);
+        const col = fnskuColumn + 1;
       if (rowNum && col >= 1) {
-        sheet.sheet.getRange(rowNum, col).setValue(fetchedFnsku);
+          sheet.sheet.getRange(rowNum, col).setValue(fetchedFnsku);
         row[fnskuColumn] = fetchedFnsku; // データ配列も更新
       }
     }
   }
 }
 
-/**
- * SKUと数量を集約してラベル用の配列を作成
- * @param {Array<Array>} data - 行データの配列
- * @param {SettingSheet} setting - 設定オブジェクト
- * @returns {Array<Object>} [{msku: string, quantity: number}]の形式の配列
- */
 function aggregateSkusForLabels(data, setting) {
   const skuNums = data.map(row => ({
     msku: row[setting.get("sku")],
@@ -179,12 +144,6 @@ function aggregateSkusForLabels(data, setting) {
   }));
 }
 
-/**
- * プラン別名列に日付と納品分類を結合した値を書き込む
- * @param {Sheet} sheet - シートオブジェクト
- * @param {Array<Array>} data - 行データの配列
- * @param {SettingSheet} setting - 設定オブジェクト
- */
 function writePlanNameToRows(sheet, data, setting) {
   const planNameColumn = setting.getOptional ? setting.getOptional("プラン別名") : null;
   const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
@@ -209,14 +168,14 @@ function writePlanNameToRows(sheet, data, setting) {
   }
 }
 
-/**
- * ラベルと指示書を生成
- */
 function generateLabelsAndInstructions() {
   const { config, setting, accessToken } = getConfigSettingAndToken();
   const sheet = new Sheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
   const data = sheet.getActiveRowData();
-  sheet.writeRequestDate();
+  
+  const dateOnly = new Date();
+  dateOnly.setHours(0, 0, 0, 0);
+  sheet.writeColumn("依頼日", dateOnly);
 
   // FNSKUが空白の場合はSP-APIから取得
   const fnskuColumn = setting.get("fnsku");
@@ -231,7 +190,10 @@ function generateLabelsAndInstructions() {
     // ラベルPDFを生成
     const finalSkuNums = aggregateSkusForLabels(data, setting);
     const labelURL = loadLabelPDF(finalSkuNums, accessToken);
-    sheet.writelabelURL(labelURL, 2);
+    const labelColumn = setting.getOptional("ラベルURL");
+    if (labelColumn !== null) {
+      sheet.writeCell(2, "ラベルURL", { type: 'formula', value: `=HYPERLINK("${labelURL}", "ラベルデータ")` });
+    }
     
     // プラン別名列に日付と納品分類を書き込む
     try {
@@ -255,7 +217,10 @@ function generateLabelsAndInstructions() {
     }
     
     const instructionURL = makeOrderInstructionSheet(validInstructionData);
-    sheet.writeInstructionURL(instructionURL, 2);
+    const instructionColumn = setting.getOptional("指示書URL");
+    if (instructionColumn !== null) {
+      sheet.writeCell(2, "指示書URL", { type: 'formula', value: `=HYPERLINK("${instructionURL}", "指示書")` });
+    }
     
   } catch (error) {
     console.error(`Error generating label or instruction:`, error.message);

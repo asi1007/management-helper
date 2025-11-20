@@ -54,8 +54,6 @@ function pickOwnerValue(row, indices, fallback, defaultIfUnknown) {
   return fallback;
 }
 
-// getColumnIndicesはSettingSheetクラスのメソッドに統合されました
-
 function updateOwner(current, incoming, fallback, sku, label) {
   if (current === incoming) {
     return current;
@@ -70,44 +68,74 @@ function updateOwner(current, incoming, fallback, sku, label) {
   return current;
 }
 
-function aggregateItemsBySku(data, skuIndex, quantityIndex, labelOwnerIndices, prepOwnerIndices, labelOwnerFallback, prepOwnerFallback) {
+function enrichRowsWithOwners(data, skuIndex, labelOwnerIndices, prepOwnerIndices, labelOwnerFallback, prepOwnerFallback) {
+  const enrichedRows = data.map(row => {
+    const sku = row[skuIndex];
+    const labelOwner = pickOwnerValue(row, labelOwnerIndices, labelOwnerFallback, 'SELLER');
+    const prepOwner = pickOwnerValue(row, prepOwnerIndices, prepOwnerFallback, 'SELLER');
+    return {
+      row: row,
+      sku: sku,
+      labelOwner: labelOwner,
+      prepOwner: prepOwner
+    };
+  });
+
+  const skuOwners = {};
+  for (const item of enrichedRows) {
+    const sku = item.sku;
+    if (!sku) continue;
+    
+    if (!skuOwners[sku]) {
+      skuOwners[sku] = {
+        labelOwner: item.labelOwner,
+        prepOwner: item.prepOwner
+      };
+    } else {
+      skuOwners[sku].labelOwner = updateOwner(
+        skuOwners[sku].labelOwner,
+        item.labelOwner,
+        labelOwnerFallback,
+        sku,
+        'labelOwner'
+      );
+      skuOwners[sku].prepOwner = updateOwner(
+        skuOwners[sku].prepOwner,
+        item.prepOwner,
+        prepOwnerFallback,
+        sku,
+        'prepOwner'
+      );
+    }
+  }
+
+  return enrichedRows.map(item => ({
+    ...item,
+    labelOwner: skuOwners[item.sku]?.labelOwner || item.labelOwner,
+    prepOwner: skuOwners[item.sku]?.prepOwner || item.prepOwner
+  }));
+}
+
+function aggregateItemsBySku(enrichedData, skuIndex, quantityIndex) {
   const aggregatedItems = {};
   
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const sku = row[skuIndex];
-    const quantity = Number(row[quantityIndex]);
+  for (let i = 0; i < enrichedData.length; i++) {
+    const item = enrichedData[i];
+    const sku = item.sku;
+    const quantity = Number(item.row[quantityIndex]);
     
     if (!sku || !quantity || quantity <= 0) {
       console.warn(`納品プラン対象外: sku=${sku}, quantity=${quantity}`);
       continue;
     }
     
-    const labelOwner = pickOwnerValue(row, labelOwnerIndices, labelOwnerFallback, 'SELLER');
-    const prepOwner = pickOwnerValue(row, prepOwnerIndices, prepOwnerFallback, 'SELLER');
-    
     if (!aggregatedItems[sku]) {
       aggregatedItems[sku] = {
         msku: sku,
         quantity: 0,
-        labelOwner: labelOwner,
-        prepOwner: prepOwner
+        labelOwner: item.labelOwner,
+        prepOwner: item.prepOwner
       };
-    } else {
-      aggregatedItems[sku].labelOwner = updateOwner(
-        aggregatedItems[sku].labelOwner,
-        labelOwner,
-        labelOwnerFallback,
-        sku,
-        'labelOwner'
-      );
-      aggregatedItems[sku].prepOwner = updateOwner(
-        aggregatedItems[sku].prepOwner,
-        prepOwner,
-        prepOwnerFallback,
-        sku,
-        'prepOwner'
-      );
     }
     aggregatedItems[sku].quantity += quantity;
   }
@@ -127,16 +155,11 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
   const labelOwnerFallback = 'SELLER';
   const prepOwnerFallback = prepOwnerIndices.length > 0 ? 'NONE' : 'SELLER';
   
+  // 各行にlabelOwnerとprepOwnerを追加し、同じSKUのオーナー値を統合
+  const enrichedData = enrichRowsWithOwners(data, skuIndex, labelOwnerIndices, prepOwnerIndices, labelOwnerFallback, prepOwnerFallback);
+  
   // SKUごとにアイテムを集約
-  const aggregatedItems = aggregateItemsBySku(
-    data,
-    skuIndex,
-    quantityIndex,
-    labelOwnerIndices,
-    prepOwnerIndices,
-    labelOwnerFallback,
-    prepOwnerFallback
-  );
+  const aggregatedItems = aggregateItemsBySku(enrichedData, skuIndex, quantityIndex);
 
   const items = Object.values(aggregatedItems);
   if (items.length === 0) {
@@ -148,8 +171,15 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
   const planResult = planCreator.createPlan(items);
 
   // プランリンクと発送日を書き込み
-  sheet.writePlanLinks(planResult.link, "納品プラン");
-  sheet.writeDate("発送日", new Date());
+  if (planResult.link) {
+    const planColumnIndex = setting.get("納品プラン");
+    const linkFormula = `=HYPERLINK("${planResult.link}", "納品プラン")`;
+    sheet.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
+  }
+  
+  const dateOnly = new Date();
+  dateOnly.setHours(0, 0, 0, 0);
+  sheet.writeColumn("発送日", dateOnly);
 
   return planResult;
 }
