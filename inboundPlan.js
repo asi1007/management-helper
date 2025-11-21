@@ -1,128 +1,11 @@
-function normalizeOwner(value, fallback, defaultIfUnknown = 'SELLER') {
-  if (value === undefined || value === null || value === '') {
-    return fallback;
-  }
-  
-  const trimmed = String(value).trim();
-  const upper = trimmed.toUpperCase();
-  
-  const mapping = {
-    'アマゾン': 'AMAZON',
-    'AMZN': 'AMAZON',
-    'AMAZON': 'AMAZON',
-    'セラー': 'SELLER',
-    '出品者': 'SELLER',
-    'SELLER': 'SELLER',
-    '自社': 'SELLER',
-    'なし': 'NONE',
-    '無し': 'NONE',
-    '不要': 'NONE',
-    'NONE': 'NONE'
-  };
-  
-  const allowedOwners = ['AMAZON', 'SELLER', 'NONE'];
-  let normalized = mapping[upper] || mapping[trimmed] || upper;
-  
-  if (allowedOwners.indexOf(normalized) >= 0) {
-    return normalized;
-  }
-  
-  if (normalized.indexOf('SELLER') >= 0 || trimmed.indexOf('出品') >= 0 || trimmed.indexOf('自社') >= 0) {
-    return 'SELLER';
-  }
-  
-  if (normalized.indexOf('AMAZON') >= 0 || trimmed.indexOf('アマゾン') >= 0 || trimmed.indexOf('ＡＭＡＺＯＮ') >= 0) {
-    return 'AMAZON';
-  }
-  
-  console.warn(`不明なオーナー指定 "${value}" を検出しました。fallback=${fallback} を適用します。`);
-  if (fallback === 'NONE') {
-    return defaultIfUnknown;
-  }
-  return fallback;
-}
-
-function pickOwnerValue(row, indices, fallback, defaultIfUnknown) {
-  for (const idx of indices) {
-    if (idx !== null && idx !== undefined) {
-      const candidate = row[idx];
-      if (candidate !== undefined && candidate !== null && String(candidate).trim() !== '') {
-        return normalizeOwner(candidate, fallback, defaultIfUnknown);
-      }
-    }
-  }
-  return fallback;
-}
-
-function updateOwner(current, incoming, fallback, sku, label) {
-  if (current === incoming) {
-    return current;
-  }
-  if (current === fallback && incoming !== fallback) {
-    return incoming;
-  }
-  if (incoming === fallback) {
-    return current;
-  }
-  console.warn(`SKU ${sku} の${label}が複数行で異なります: current=${current}, incoming=${incoming}。最初の値を使用します。`);
-  return current;
-}
-
-function enrichRowsWithOwners(data, skuIndex, labelOwnerIndices, prepOwnerIndices, labelOwnerFallback, prepOwnerFallback) {
-  const enrichedRows = data.map(row => {
-    const sku = row[skuIndex];
-    const labelOwner = pickOwnerValue(row, labelOwnerIndices, labelOwnerFallback, 'SELLER');
-    const prepOwner = pickOwnerValue(row, prepOwnerIndices, prepOwnerFallback, 'SELLER');
-    return {
-      row: row,
-      sku: sku,
-      labelOwner: labelOwner,
-      prepOwner: prepOwner
-    };
-  });
-
-  const skuOwners = {};
-  for (const item of enrichedRows) {
-    const sku = item.sku;
-    if (!sku) continue;
-    
-    if (!skuOwners[sku]) {
-      skuOwners[sku] = {
-        labelOwner: item.labelOwner,
-        prepOwner: item.prepOwner
-      };
-    } else {
-      skuOwners[sku].labelOwner = updateOwner(
-        skuOwners[sku].labelOwner,
-        item.labelOwner,
-        labelOwnerFallback,
-        sku,
-        'labelOwner'
-      );
-      skuOwners[sku].prepOwner = updateOwner(
-        skuOwners[sku].prepOwner,
-        item.prepOwner,
-        prepOwnerFallback,
-        sku,
-        'prepOwner'
-      );
-    }
-  }
-
-  return enrichedRows.map(item => ({
-    ...item,
-    labelOwner: skuOwners[item.sku]?.labelOwner || item.labelOwner,
-    prepOwner: skuOwners[item.sku]?.prepOwner || item.prepOwner
-  }));
-}
-
-function aggregateItemsBySku(enrichedData, skuIndex, quantityIndex) {
+function aggregateItems(data, skuIndex, quantityIndex) {
   const aggregatedItems = {};
+  const labelOwner = 'SELLER';
   
-  for (let i = 0; i < enrichedData.length; i++) {
-    const item = enrichedData[i];
-    const sku = item.sku;
-    const quantity = Number(item.row[quantityIndex]);
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const sku = row[skuIndex];
+    const quantity = Number(row[quantityIndex]);
     
     if (!sku || !quantity || quantity <= 0) {
       console.warn(`納品プラン対象外: sku=${sku}, quantity=${quantity}`);
@@ -133,8 +16,7 @@ function aggregateItemsBySku(enrichedData, skuIndex, quantityIndex) {
       aggregatedItems[sku] = {
         msku: sku,
         quantity: 0,
-        labelOwner: item.labelOwner,
-        prepOwner: item.prepOwner
+        labelOwner: labelOwner
       };
     }
     aggregatedItems[sku].quantity += quantity;
@@ -143,32 +25,92 @@ function aggregateItemsBySku(enrichedData, skuIndex, quantityIndex) {
   return aggregatedItems;
 }
 
-
 function createInboundPlanForRows(sheet, setting, data, accessToken) {
   // 必須設定を一度に取得
   const { "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["sku", "数量"]);
   
-  // オプション設定を一度に取得
-  const labelOwnerIndices = setting.getColumnIndices(["labelOwner", "ラベル担当"]);
-  const prepOwnerIndices = setting.getColumnIndices(["prepOwner", "梱包者"]);
-
-  const labelOwnerFallback = 'SELLER';
-  const prepOwnerFallback = prepOwnerIndices.length > 0 ? 'NONE' : 'SELLER';
-  
-  // 各行にlabelOwnerとprepOwnerを追加し、同じSKUのオーナー値を統合
-  const enrichedData = enrichRowsWithOwners(data, skuIndex, labelOwnerIndices, prepOwnerIndices, labelOwnerFallback, prepOwnerFallback);
-  
   // SKUごとにアイテムを集約
-  const aggregatedItems = aggregateItemsBySku(enrichedData, skuIndex, quantityIndex);
+  const aggregatedItems = aggregateItems(data, skuIndex, quantityIndex);
 
   const items = Object.values(aggregatedItems);
   if (items.length === 0) {
     throw new Error('納品プランを作成できる有効なSKUがありません');
   }
 
-  // プランを作成
+  // 初期値として全てのアイテムのprepOwnerを'NONE'に設定
+  let currentItems = items.map(item => ({
+    ...item,
+    prepOwner: 'NONE'
+  }));
+
+  // プランを作成 (エラー時のリトライロジック付き)
   const planCreator = new InboundPlanCreator(accessToken);
-  const planResult = planCreator.createPlan(items);
+  let planResult;
+  let retryCount = 0;
+  const MAX_RETRIES = 3;
+
+  while (true) {
+    try {
+      planResult = planCreator.createPlan(currentItems);
+      break; // 成功したらループを抜ける
+    } catch (e) {
+      if (retryCount >= MAX_RETRIES) {
+        console.error(`最大リトライ回数(${MAX_RETRIES})を超えました。最後のエラー: ${e.message}`);
+        throw e;
+      }
+
+      const errorMessage = e.message;
+      const jsonMatch = errorMessage.match(/\[.*\]/);
+      if (!jsonMatch) throw e; // JSONが含まれていないエラーはそのまま投げる
+
+      let errors;
+      try {
+        errors = JSON.parse(jsonMatch[0]);
+      } catch (jsonError) {
+        throw e; // JSONパースエラーならそのまま投げる
+      }
+
+      let needsRetry = false;
+      // SKUをキーにしたマップを作成（高速検索用）
+      const itemMap = new Map(currentItems.map(item => [item.msku, item]));
+
+      for (const error of errors) {
+        // パターン1: requires prepOwner but NONE was assigned -> SELLERにする
+        // エラー例: "ERROR: SKU requires prepOwner but NONE was assigned"
+        const requireMatch = error.message.match(/ERROR: (.+?) requires prepOwner/);
+        if (requireMatch) {
+          const msku = requireMatch[1];
+          const item = itemMap.get(msku);
+          if (item) {
+            console.log(`SKU ${msku} は梱包が必要なため、prepOwnerをSELLERに変更します。`);
+            item.prepOwner = 'SELLER';
+            needsRetry = true;
+          }
+        }
+
+        // パターン2: does not require prepOwner but SELLER was assigned -> NONEにする
+        // エラー例: "ERROR: SKU does not require prepOwner but SELLER was assigned"
+        const notRequireMatch = error.message.match(/ERROR: (.+?) does not require prepOwner/);
+        if (notRequireMatch) {
+          const msku = notRequireMatch[1];
+          const item = itemMap.get(msku);
+          if (item) {
+            console.log(`SKU ${msku} は梱包不要なため、prepOwnerをNONEに変更します。`);
+            item.prepOwner = 'NONE';
+            needsRetry = true;
+          }
+        }
+      }
+
+      if (!needsRetry) {
+        console.error(`prepOwner以外のエラーが発生しました: ${e.message}`);
+        throw e; // prepOwner関連のエラーでなければそのまま投げる
+      }
+      
+      console.log(`prepOwner設定を修正して再試行します (${retryCount + 1}/${MAX_RETRIES})`);
+      retryCount++;
+    }
+  }
 
   // プランリンクと発送日を書き込み
   if (planResult.link) {

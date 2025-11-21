@@ -84,12 +84,6 @@ class InboundPlanCreator{
         labelOwner: item.labelOwner || 'SELLER',
         prepOwner: item.prepOwner || 'SELLER'
       };
-      if (item.expiration) {
-        planItem.expiration = item.expiration;
-      }
-      if (item.manufacturingLotCode) {
-        planItem.manufacturingLotCode = item.manufacturingLotCode;
-      }
       return planItem;
     });
 
