@@ -200,6 +200,11 @@ class Sheet{
 
     // 3. 行番号に対応するデータを抽出
     for (const rowNum of sortedRowNumbers) {
+      // フィルタで非表示になっている行はスキップ
+      if (activeSheet.isRowHiddenByFilter(rowNum)) {
+        continue;
+      }
+
       // データ配列は0始まり、行番号は1始まり、ヘッダーが1行あるため -2
       const dataIndex = rowNum - 2;
 
