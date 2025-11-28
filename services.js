@@ -188,46 +188,19 @@ class Sheet{
   }
 
   getActiveRowData(){
-    const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    const activeSheet = activeSpreadsheet.getActiveSheet();
-
-    if (activeSheet.getName() !== this.sheet.getName()) {
-      throw new Error('アクティブセルが対象シートではありません');
-    }
-
-    const selectedRowNumbers = new Set();
-    const activeRangeList = activeSheet.getActiveRangeList();
-    if (activeRangeList && activeRangeList.getRanges().length > 0) {
-      const ranges = activeRangeList.getRanges();
-      for (let rangeIndex = 0; rangeIndex < ranges.length; rangeIndex++) {
-        const range = ranges[rangeIndex];
-        const startRow = range.getRow();
-        const numRows = range.getNumRows();
-        for (let i = 0; i < numRows; i++) {
-          selectedRowNumbers.add(startRow + i);
-        }
-      }
-    } else {
-      const activeRange = activeSheet.getActiveRange();
-      if (!activeRange) {
-        throw new Error('アクティブセルが選択されていません');
-      }
-
-      const startRow = activeRange.getRow();
-      const numRows = activeRange.getNumRows();
-      for (let i = 0; i < numRows; i++) {
-        selectedRowNumbers.add(startRow + i);
-      }
-    }
-
+    // 2. 選択された行番号を取得
+    const selectedRowNumbers = this._getSelectedRowNumbers(this.sheet);
     const sortedRowNumbers = Array.from(selectedRowNumbers).sort((a, b) => a - b);
 
     const selectedRows = [];
     const finalRowNumbers = [];
 
+    // 3. 行番号に対応するデータを抽出
     for (const rowNum of sortedRowNumbers) {
+      // データ配列は0始まり、行番号は1始まり、ヘッダーが1行あるため -2
       const dataIndex = rowNum - 2;
 
+      // データ範囲外の行はスキップ
       if (dataIndex < 0 || dataIndex >= this.data.length) {
         continue;
       }
@@ -237,14 +210,37 @@ class Sheet{
       finalRowNumbers.push(rowNum);
     }
 
-    if (selectedRows.length === 0) {
-      throw new Error('有効な行が選択されていません');
-    }
-
+    // インスタンスの状態を更新
     this.data = selectedRows;
     this.rowNumbers = finalRowNumbers;
 
     return selectedRows;
+  }
+
+  _getSelectedRowNumbers(activeSheet) {
+    const selectedRowNumbers = new Set();
+    const activeRangeList = activeSheet.getActiveRangeList();
+
+    // 複数範囲選択に対応
+    if (activeRangeList && activeRangeList.getRanges().length > 0) {
+      const ranges = activeRangeList.getRanges();
+      for (const range of ranges) {
+        this._addSelectedRowNumbers(selectedRowNumbers, range);
+      }
+    } else {
+      const activeRange = activeSheet.getActiveRange();
+      this._addSelectedRowNumbers(selectedRowNumbers, activeRange);
+    }
+    return selectedRowNumbers;
+  }
+
+  _addSelectedRowNumbers(selectedRowNumbers, range){
+      const startRow = activeRange.getRow();
+      const numRows = activeRange.getNumRows();
+      for (let i = 0; i < numRows; i++) {
+        selectedRowNumbers.add(startRow + i);
+      }
+      return selectedRowNumbers;
   }
 
   writeColumn(columnName, value){
@@ -252,16 +248,13 @@ class Sheet{
       const column = this.setting.get(columnName) + 1;
       let successCount = 0;
       
-      for (let i = 0; i < this.rowNumbers.length; i++) {
-        const rowNum = this.rowNumbers[i];
-        if (rowNum) {
+      for (const rowNum of this.rowNumbers) {
           if (typeof value === 'object' && value.type === 'formula') {
             this.sheet.getRange(rowNum, column).setFormula(value.value);
           } else {
             this.sheet.getRange(rowNum, column).setValue(value);
           }
           successCount++;
-        }
       }
       console.log(`${columnName}を${successCount}行に書き込みました`);
     } catch (e) {
