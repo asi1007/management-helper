@@ -188,8 +188,11 @@ class Sheet{
   }
 
   getActiveRowData(){
+    const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const activeSheet = activeSpreadsheet.getActiveSheet();
+
     // 2. 選択された行番号を取得
-    const selectedRowNumbers = this._getSelectedRowNumbers(this.sheet);
+    const selectedRowNumbers = this._getSelectedRowNumbers(activeSheet);
     const sortedRowNumbers = Array.from(selectedRowNumbers).sort((a, b) => a - b);
 
     const selectedRows = [];
@@ -214,6 +217,8 @@ class Sheet{
     this.data = selectedRows;
     this.rowNumbers = finalRowNumbers;
 
+    console.log(`選択された行: [${finalRowNumbers.join(', ')}]`);
+
     return selectedRows;
   }
 
@@ -234,7 +239,7 @@ class Sheet{
     return selectedRowNumbers;
   }
 
-  _addSelectedRowNumbers(selectedRowNumbers, range){
+  _addSelectedRowNumbers(selectedRowNumbers, activeRange){
       const startRow = activeRange.getRow();
       const numRows = activeRange.getNumRows();
       for (let i = 0; i < numRows; i++) {
