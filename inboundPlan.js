@@ -25,10 +25,34 @@ function aggregateItems(data, skuIndex, quantityIndex) {
   return aggregatedItems;
 }
 
-function createInboundPlanForRows(sheet, setting, data, accessToken) {
-  // 必須設定を一度に取得
-  const { "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["sku", "数量"]);
+function writePlanResultToSheet(sheet, setting, planResult) {
+  if (planResult.link) {
+    const planColumnIndex = setting.get("納品プラン");
+    const linkFormula = `=HYPERLINK("${planResult.link}", "納品プラン")`;
+    sheet.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
+  }
   
+  const dateOnly = new Date();
+  dateOnly.setHours(0, 0, 0, 0);
+  sheet.writeColumn("発送日", dateOnly);
+}
+
+function handlePrepOwnerError(error, itemMap, regex, newOwnerValue, logMessage) {
+  const match = error.message.match(regex);
+  if (match) {
+    const msku = match[1];
+    const item = itemMap.get(msku);
+    if (item) {
+      console.log(logMessage.replace('${msku}', msku));
+      item.prepOwner = newOwnerValue;
+      return true;
+    }
+  }
+  return false;
+}
+
+function createInboundPlanForRows(sheet, setting, data, accessToken) {
+  const { "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["sku", "数量"]);
   // SKUごとにアイテムを集約
   const aggregatedItems = aggregateItems(data, skuIndex, quantityIndex);
 
@@ -76,30 +100,22 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
 
       for (const error of errors) {
         // パターン1: requires prepOwner but NONE was assigned -> SELLERにする
-        // エラー例: "ERROR: SKU requires prepOwner but NONE was assigned"
-        const requireMatch = error.message.match(/ERROR: (.+?) requires prepOwner/);
-        if (requireMatch) {
-          const msku = requireMatch[1];
-          const item = itemMap.get(msku);
-          if (item) {
-            console.log(`SKU ${msku} は梱包が必要なため、prepOwnerをSELLERに変更します。`);
-            item.prepOwner = 'SELLER';
-            needsRetry = true;
-          }
-        }
+        needsRetry = handlePrepOwnerError(
+          error, 
+          itemMap, 
+          /ERROR: (.+?) requires prepOwner/, 
+          'SELLER', 
+          'SKU ${msku} は梱包が必要なため、prepOwnerをSELLERに変更します。'
+        )
 
         // パターン2: does not require prepOwner but SELLER was assigned -> NONEにする
-        // エラー例: "ERROR: SKU does not require prepOwner but SELLER was assigned"
-        const notRequireMatch = error.message.match(/ERROR: (.+?) does not require prepOwner/);
-        if (notRequireMatch) {
-          const msku = notRequireMatch[1];
-          const item = itemMap.get(msku);
-          if (item) {
-            console.log(`SKU ${msku} は梱包不要なため、prepOwnerをNONEに変更します。`);
-            item.prepOwner = 'NONE';
-            needsRetry = true;
-          }
-        }
+        needsRetry = needsRetry || handlePrepOwnerError(
+          error, 
+          itemMap, 
+          /ERROR: (.+?) does not require prepOwner/, 
+          'NONE', 
+          'SKU ${msku} は梱包不要なため、prepOwnerをNONEに変更します。'
+        )
       }
 
       if (!needsRetry) {
@@ -113,15 +129,7 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
   }
 
   // プランリンクと発送日を書き込み
-  if (planResult.link) {
-    const planColumnIndex = setting.get("納品プラン");
-    const linkFormula = `=HYPERLINK("${planResult.link}", "納品プラン")`;
-    sheet.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
-  }
-  
-  const dateOnly = new Date();
-  dateOnly.setHours(0, 0, 0, 0);
-  sheet.writeColumn("発送日", dateOnly);
+  writePlanResultToSheet(sheet, setting, planResult);
 
   return planResult;
 }
