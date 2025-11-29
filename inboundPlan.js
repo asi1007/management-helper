@@ -25,10 +25,22 @@ function aggregateItems(data, skuIndex, quantityIndex) {
   return aggregatedItems;
 }
 
-function writePlanResultToSheet(sheet, setting, planResult) {
+function formatDateYYMM(date) {
+  const year = String(date.getFullYear()).slice(-2);
+  const month = String(date.getMonth() + 1);
+  const monthStr = month.length === 1 ? '0' + month : month;
+  return `${year}/${monthStr}`;
+}
+
+function writePlanResultToSheet(sheet, setting, planResult, data) {
   if (planResult.link) {
-    const planColumnIndex = setting.get("納品プラン");
-    const linkFormula = `=HYPERLINK("${planResult.link}", "納品プラン")`;
+    const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
+    const dateStr = formatDateYYMM(new Date());
+    const deliveryCategory = data.length > 0 && deliveryCategoryColumn !== null 
+      ? (data[0][deliveryCategoryColumn] || '') 
+      : '';
+    const planNameText = `${dateStr}${deliveryCategory}`;
+    const linkFormula = `=HYPERLINK("${planResult.link}", "${planNameText}")`;
     sheet.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
   }
   
@@ -129,7 +141,7 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
   }
 
   // プランリンクと発送日を書き込み
-  writePlanResultToSheet(sheet, setting, planResult);
+  writePlanResultToSheet(sheet, setting, planResult, data);
 
   return planResult;
 }
