@@ -73,7 +73,7 @@ function aggregateSkusForLabels(data, setting) {
   }));
 }
 
-function writePlanNameToRows(sheet, data, setting) {
+function writePlanNameToRows(sheet, data, setting, instructionURL) {
   const planNameColumn = setting.getOptional ? setting.getOptional("プラン別名") : null;
   const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
   const dateStr = formatDateMMDD(new Date());
@@ -85,7 +85,10 @@ function writePlanNameToRows(sheet, data, setting) {
     const planNameValue = `${dateStr}${deliveryCategory}`;
     
     const col = planNameColumn + 1;
-    if (rowNum && col >= 1) {
+    if (rowNum && col >= 1 && instructionURL) {
+      const linkFormula = `=HYPERLINK("${instructionURL}", "${planNameValue}")`;
+      sheet.sheet.getRange(rowNum, col).setFormula(linkFormula);
+    } else if (rowNum && col >= 1) {
       sheet.sheet.getRange(rowNum, col).setValue(planNameValue);
     }
   }
@@ -122,9 +125,9 @@ function writeToSheet(sheet, data, setting, instructionURL, labelURL) {
   dateOnly.setHours(0, 0, 0, 0);
   sheet.writeColumn("依頼日", dateOnly);
 
-  // プラン別名列に日付と納品分類を書き込む
+  // プラン別名列に日付と納品分類を書き込む（指示書URLへのリンクとして）
   try {
-    writePlanNameToRows(sheet, data, setting);
+    writePlanNameToRows(sheet, data, setting, instructionURL);
   } catch (error) {
     console.warn(`プラン別名列への書き込みでエラーが発生しました: ${error.message}`);
   }
