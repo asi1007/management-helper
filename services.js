@@ -286,9 +286,9 @@ class Sheet{
       } else {
         this.sheet.getRange(rowNum, column).setValue(value);
       }
-      console.log(`${rowNum}行目の${columnName}に書き込みました`);
+      console.log(`${rowNum}行目の${columnNum}に書き込みました`);
     } catch (e) {
-      console.warn(`${rowNum}行目の${columnName}への書き込みに失敗しました: ${e.message}`);
+      console.warn(`${rowNum}行目の${columnNum}への書き込みに失敗しました: ${e.message}`);
       throw e;
     }
   }
