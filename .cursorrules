@@ -1,4 +1,0 @@
-# 開発原則
-
-- 各関数の中で呼び出す関数の粒度は同じになるように実装すること (SLAP: Single Level of Abstraction Principle)。
-

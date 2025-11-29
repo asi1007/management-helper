@@ -1,87 +1,8 @@
 // 定数
-const KEEPA_API_ENDPOINT = 'https://api.keepa.com/product';
-const INSTRUCTION_SHEET_TEMPLATE_ID = '1YDBbEgxTnRZRqKi5UUsQAZfCgakdzVKNJtX6cPBZARA';
-const INSTRUCTION_SHEET_START_ROW = 8;
-const AMAZON_IMAGE_BASE_URL = 'https://images-na.ssl-images-amazon.com/images/I/';
-
-function getKeepaProductImage(asin) {
-  if (!asin) {
-    return null;
-  }
-  
-  const config = getEnvConfig();
-  const url = `${KEEPA_API_ENDPOINT}?key=${config.KEEPA_API_KEY}&domain=5&asin=${asin}`;
-  const params = {
-      method: 'get',
-    muteHttpExceptions: true
-  };
-  
-  try {
-    const response = UrlFetchApp.fetch(url, params);
-    const json = JSON.parse(response.getContentText());
-    
-    if (json.error) {
-      console.warn(`Keepa API error for ASIN ${asin}: ${json.error.message}`);
-      return null;
-    }
-    
-    if (!json.products || json.products.length === 0) {
-      return null;
-    }
-    
-    const product = json.products[0];
-    const imagesCSV = product.imagesCSV;
-    
-    if (!imagesCSV) {
-      return null;
-    }
-    
-    const firstImageFile = imagesCSV.split(',')[0];
-    return `${AMAZON_IMAGE_BASE_URL}${firstImageFile}._SL100_.jpg`;
-  } catch (error) {
-    console.error(`Failed to fetch image for ASIN ${asin}: ${error.message}`);
-    return null;
-  }
-}
 
 function makeOrderInstructionSheet(data, setting) {
-  if (!Array.isArray(data) || data.length === 0) {
-    throw new Error('指示書作成対象の行データが空、または不正です');
-  }
-
-  const rows = data.map(row => [
-    row[setting.get("fnsku")],
-    row[setting.get("asin")],
-    row[setting.get("数量")],
-    row[setting.get("備考")],
-    row[setting.get("注文依頼番号")]
-  ]);
-  
-  const originalFile = DriveApp.getFileById(INSTRUCTION_SHEET_TEMPLATE_ID);
-  const now = new Date();
-  const datetimeStr = Utilities.formatDate(now, 'JST', 'yyyy-MM-dd HH:mm:ss');
-  const fileId = originalFile.makeCopy(datetimeStr).getId();
-  const sheet = SpreadsheetApp.openById(fileId).getActiveSheet();
-  
-  let rowNum = INSTRUCTION_SHEET_START_ROW;
-  
-  for (const row of rows) {
-    // 行データを書き込み
-    sheet.getRange(rowNum, 2, 1, 5).setValues([row]);
-    
-    // 商品画像を取得して挿入
-    const asin = row[1]; // ASINは2列目
-    const imageUrl = getKeepaProductImage(asin);
-    
-    if (imageUrl) {
-      const blob = UrlFetchApp.fetch(imageUrl).getBlob();
-      sheet.insertImage(blob, 1, rowNum);
-    }
-    
-    rowNum++;
-  }
-  
-  return `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+  const instructionSheet = new OrderInstructionSheet(setting);
+  return instructionSheet.create(data);
 }
 
 function loadLabelPDF(skuNums, accessToken) {
