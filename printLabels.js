@@ -44,10 +44,18 @@ function getKeepaProductImage(asin) {
   }
 }
 
-function makeOrderInstructionSheet(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) {
+function makeOrderInstructionSheet(data, setting) {
+  if (!Array.isArray(data) || data.length === 0) {
     throw new Error('指示書作成対象の行データが空、または不正です');
   }
+
+  const rows = data.map(row => [
+    row[setting.get("fnsku")],
+    row[setting.get("asin")],
+    row[setting.get("数量")],
+    row[setting.get("備考")],
+    row[setting.get("注文依頼番号")]
+  ]);
   
   const originalFile = DriveApp.getFileById(INSTRUCTION_SHEET_TEMPLATE_ID);
   const now = new Date();
@@ -147,12 +155,6 @@ function aggregateSkusForLabels(data, setting) {
 function writePlanNameToRows(sheet, data, setting) {
   const planNameColumn = setting.getOptional ? setting.getOptional("プラン別名") : null;
   const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
-  
-  if (planNameColumn === null || planNameColumn < 0 || deliveryCategoryColumn === null || deliveryCategoryColumn < 0) {
-    console.log(`プラン別名列または納品分類列の設定が見つかりません`);
-    return;
-  }
-  
   const dateStr = formatDateMMDD(new Date());
   
   for (let i = 0; i < data.length; i++) {
@@ -172,56 +174,19 @@ function generateLabelsAndInstructions() {
   const { config, setting, accessToken } = getConfigSettingAndToken();
   const sheet = new Sheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
   const data = sheet.getActiveRowData();
-  
-  const dateOnly = new Date();
-  dateOnly.setHours(0, 0, 0, 0);
-  sheet.writeColumn("依頼日", dateOnly);
 
   // FNSKUが空白の場合はSP-APIから取得
   const fnskuColumn = setting.get("fnsku");
   const skuColumn = setting.get("sku");
   fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken);
-
-  if (data.length === 0) {
-    throw new Error('処理対象の行がありません');
-  }
   
   try {
     // ラベルPDFを生成
     const finalSkuNums = aggregateSkusForLabels(data, setting);
     const labelURL = loadLabelPDF(finalSkuNums, accessToken);
-    const labelColumn = setting.getOptional("ラベルURL");
-    if (labelColumn !== null) {
-      sheet.writeCell(2, "ラベルURL", { type: 'formula', value: `=HYPERLINK("${labelURL}", "ラベルデータ")` });
-    }
-    
-    // プラン別名列に日付と納品分類を書き込む
-    try {
-      writePlanNameToRows(sheet, data, setting);
-    } catch (error) {
-      console.warn(`プラン別名列への書き込みでエラーが発生しました: ${error.message}`);
-    }
-    
-    // 指示書を生成
-    const instructionData = data.map(row => [
-      row[setting.get("fnsku")],
-      row[setting.get("asin")],
-      row[setting.get("数量")],
-      row[setting.get("備考")],
-      row[setting.get("注文依頼番号")]
-    ]);
-    
-    const validInstructionData = instructionData.filter(item => item[0] || item[1]);
-    if (validInstructionData.length === 0) {
-      throw new Error('有効な指示書データがありません');
-    }
-    
-    const instructionURL = makeOrderInstructionSheet(validInstructionData);
-    const instructionColumn = setting.getOptional("指示書URL");
-    if (instructionColumn !== null) {
-      sheet.writeCell(2, "指示書URL", { type: 'formula', value: `=HYPERLINK("${instructionURL}", "指示書")` });
-    }
-    
+    const instructionURL = makeOrderInstructionSheet(data, setting);
+    writeToSheet(sheet, data, setting, instructionURL, labelURL);
+
   } catch (error) {
     console.error(`Error generating label or instruction:`, error.message);
     console.error(`Stack trace:`, error.stack);
@@ -229,4 +194,30 @@ function generateLabelsAndInstructions() {
   }
 }
 
+
+function writeToSheet(sheet, data, setting, instructionURL, labelURL) {
+  // 依頼日列に本日日付（時刻は00:00:00）を書き込む
+  const dateOnly = new Date();
+  dateOnly.setHours(0, 0, 0, 0);
+  sheet.writeColumn("依頼日", dateOnly);
+
+  // ラベルURL列にラベルURLを書き込む
+  const labelColumn = setting.getOptional("ラベルURL");
+  if (labelColumn !== null && labelURL) {
+    sheet.writeCell(2, "ラベルURL", { type: 'formula', value: `=HYPERLINK("${labelURL}", "ラベルデータ")` });
+  }
+
+  // プラン別名列に日付と納品分類を書き込む
+  try {
+    writePlanNameToRows(sheet, data, setting);
+  } catch (error) {
+    console.warn(`プラン別名列への書き込みでエラーが発生しました: ${error.message}`);
+  }
+
+  // 指示書URL列に指示書URLを書き込む
+  const instructionColumn = setting.getOptional("指示書URL");
+  if (instructionColumn !== null) {
+    sheet.writeCell(2, "指示書URL", { type: 'formula', value: `=HYPERLINK("${instructionURL}", "指示書")` });
+  }
+}
 
