@@ -200,8 +200,14 @@ class Sheet{
 
     // 3. 行番号に対応するデータを抽出
     for (const rowNum of sortedRowNumbers) {
-      // フィルタで非表示になっている行はスキップ
-      if (activeSheet.isRowHiddenByFilter(rowNum)) {
+      // フィルタまたは手動で非表示になっている行はスキップ
+      const isHiddenByFilter = activeSheet.isRowHiddenByFilter(rowNum);
+      const isHiddenByUser = activeSheet.isRowHiddenByUser(rowNum);
+      const isHidden = isHiddenByFilter || isHiddenByUser;
+      
+      console.log(`行番号 ${rowNum}: フィルタ非表示=${isHiddenByFilter}, 手動非表示=${isHiddenByUser}, 判定=${isHidden ? 'スキップ' : '対象'}`);
+      
+      if (isHidden) {
         continue;
       }
 
@@ -273,9 +279,8 @@ class Sheet{
     }
   }
 
-  writeCell(rowNum, columnName, value){
+  writeCell(rowNum, columnNum, value){
     try {
-      const column = this.setting.get(columnName) + 1;
       if (typeof value === 'object' && value.type === 'formula') {
         this.sheet.getRange(rowNum, column).setFormula(value.value);
       } else {

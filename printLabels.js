@@ -201,12 +201,6 @@ function writeToSheet(sheet, data, setting, instructionURL, labelURL) {
   dateOnly.setHours(0, 0, 0, 0);
   sheet.writeColumn("依頼日", dateOnly);
 
-  // ラベルURL列にラベルURLを書き込む
-  const labelColumn = setting.getOptional("ラベルURL");
-  if (labelColumn !== null && labelURL) {
-    sheet.writeCell(2, "ラベルURL", { type: 'formula', value: `=HYPERLINK("${labelURL}", "ラベルデータ")` });
-  }
-
   // プラン別名列に日付と納品分類を書き込む
   try {
     writePlanNameToRows(sheet, data, setting);
@@ -214,10 +208,7 @@ function writeToSheet(sheet, data, setting, instructionURL, labelURL) {
     console.warn(`プラン別名列への書き込みでエラーが発生しました: ${error.message}`);
   }
 
-  // 指示書URL列に指示書URLを書き込む
-  const instructionColumn = setting.getOptional("指示書URL");
-  if (instructionColumn !== null) {
-    sheet.writeCell(2, "指示書URL", { type: 'formula', value: `=HYPERLINK("${instructionURL}", "指示書")` });
-  }
+  sheet.writeCell(2, 1, { type: 'formula', value: `=HYPERLINK("${labelURL}", "ラベルデータ")` });
+  sheet.writeCell(2, 2, { type: 'formula', value: `=HYPERLINK("${instructionURL}", "指示書")` });
 }
 
