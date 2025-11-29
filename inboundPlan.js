@@ -25,17 +25,18 @@ function aggregateItems(data, skuIndex, quantityIndex) {
   return aggregatedItems;
 }
 
-function formatDateYYMM(date) {
-  const year = String(date.getFullYear()).slice(-2);
+function formatDateMMDD(date) {
   const month = String(date.getMonth() + 1);
+  const day = String(date.getDate());
   const monthStr = month.length === 1 ? '0' + month : month;
-  return `${year}/${monthStr}`;
+  const dayStr = day.length === 1 ? '0' + day : day;
+  return `${monthStr}/${dayStr}`;
 }
 
 function writePlanResultToSheet(sheet, setting, planResult, data) {
   if (planResult.link) {
     const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
-    const dateStr = formatDateYYMM(new Date());
+    const dateStr = formatDateMMDD(new Date());
     const deliveryCategory = data.length > 0 && deliveryCategoryColumn !== null 
       ? (data[0][deliveryCategoryColumn] || '') 
       : '';
