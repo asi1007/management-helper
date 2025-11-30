@@ -282,9 +282,9 @@ class Sheet{
   writeCell(rowNum, columnNum, value){
     try {
       if (typeof value === 'object' && value.type === 'formula') {
-        this.sheet.getRange(rowNum, column).setFormula(value.value);
+        this.sheet.getRange(rowNum, columnNum).setFormula(value.value);
       } else {
-        this.sheet.getRange(rowNum, column).setValue(value);
+        this.sheet.getRange(rowNum, columnNum).setValue(value);
       }
       console.log(`${rowNum}行目の${columnNum}に書き込みました`);
     } catch (e) {
