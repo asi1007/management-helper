@@ -51,8 +51,7 @@ class Downloader{
 
 class InboundPlanCreator{
   constructor(authToken){
-    this.API_BASE_URL = "https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20";
-    this.PLAN_LINK_BASE = "https://sellercentral.amazon.co.jp";
+    this.BASE_URL = "https://sellingpartnerapi-fe.amazon.com/fba/inbound/v0";
     this.authToken = authToken;
     this.options = {
       method: 'post',
@@ -76,208 +75,107 @@ class InboundPlanCreator{
     return filtered;
   }
 
-  _parseErrorsFromMessage(errorMessage) {
-    const jsonMatch = errorMessage.match(/\[.*\]/);
-    if (!jsonMatch) return null;
-    try {
-      return JSON.parse(jsonMatch[0]);
-    } catch (jsonError) {
-      return null;
-    }
-  }
-
-  _handlePrepOwnerError(error, itemMap, regex, newOwnerValue, logMessage) {
-    const match = error.message.match(regex);
-    if (match) {
-      const msku = match[1];
-      const item = itemMap.get(msku);
-      if (item) {
-        console.log(logMessage.replace('${msku}', msku));
-        item.prepOwner = newOwnerValue;
-        return true;
-      }
-    }
-    return false;
-  }
-
-  _createInboundPlanWithRetry(items) {
-    let currentItems = items.map(item => ({
-      msku: item.msku,
-      quantity: item.quantity,
-      labelOwner: item.labelOwner || 'SELLER',
-      prepOwner: item.prepOwner || 'NONE' // 初期値NONE
+  _createShipmentPlan(items) {
+    const requestItems = items.map(item => ({
+      SellerSKU: item.msku,
+      ASIN: item.asin,
+      Condition: 'NewItem',
+      Quantity: item.quantity
     }));
 
-    let retryCount = 0;
-    const MAX_RETRIES = 3;
-
-    while (true) {
-      try {
-        return this._createInboundPlan(currentItems);
-      } catch (e) {
-        if (retryCount >= MAX_RETRIES) {
-          console.error(`最大リトライ回数(${MAX_RETRIES})を超えました。最後のエラー: ${e.message}`);
-          throw e;
-        }
-
-        const errors = this._parseErrorsFromMessage(e.message);
-        if (!errors) throw e;
-
-        const itemMap = new Map(currentItems.map(item => [item.msku, item]));
-        let needsRetry = false;
-
-        for (const error of errors) {
-          const requiresPrep = this._handlePrepOwnerError(
-            error, itemMap, /ERROR: (.+?) requires prepOwner/, 'SELLER',
-            'SKU ${msku} は梱包が必要なため、prepOwnerをSELLERに変更します。'
-          );
-          const notRequiresPrep = this._handlePrepOwnerError(
-            error, itemMap, /ERROR: (.+?) does not require prepOwner/, 'NONE',
-            'SKU ${msku} は梱包不要なため、prepOwnerをNONEに変更します。'
-          );
-          needsRetry = needsRetry || requiresPrep || notRequiresPrep;
-        }
-
-        if (!needsRetry) throw e;
-        
-        console.log(`prepOwner設定を修正して再試行します (${retryCount + 1}/${MAX_RETRIES})`);
-        retryCount++;
-      }
-    }
-  }
-
-  _createInboundPlan(items) {
     const payload = {
-      destinationMarketplaces: [DEFAULT_MARKETPLACE_ID],
-      sourceAddress: this.buildSourceAddress(),
-      items: items,
-      name: `Inbound ${Utilities.formatDate(new Date(), 'JST', 'yyyy-MM-dd HH:mm')}`
+      ShipToCountryCode: 'JP',
+      LabelPrepPreference: 'SELLER_LABEL',
+      ShipFromAddress: this.buildSourceAddress(),
+      InboundShipmentPlanRequestItems: requestItems
     };
 
     const options = Object.assign({}, this.options, {
       payload: JSON.stringify(payload)
     });
 
-    const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/inboundPlans`, options);
+    const response = UrlFetchApp.fetch(`${this.BASE_URL}/plans`, options);
     const status = response.getResponseCode();
     const body = response.getContentText();
     
-    if (status !== 202) {
+    let json;
+    try {
+      json = JSON.parse(body);
+    } catch(parseError) {
+      throw new Error(`納品プラン作成APIレスポンスの解析に失敗しました: ${body}`);
+    }
+
+    if (status !== 200) {
+       const errorMessage = json && json.errors ? JSON.stringify(json.errors) : body;
+       throw new Error(`納品プランの作成に失敗しました (status ${status}): ${errorMessage}`);
+    }
+
+    return json.payload;
+  }
+
+  _createInboundShipment(shipmentId, plan) {
+    const shipmentHeader = {
+      ShipmentName: `FBA (${Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm')})`,
+      ShipFromAddress: this.buildSourceAddress(),
+      DestinationFulfillmentCenterId: plan.DestinationFulfillmentCenterId,
+      LabelPrepPreference: 'SELLER_LABEL',
+      ShipmentStatus: 'WORKING'
+    };
+
+    const shipmentItems = plan.Items.map(item => ({
+      SellerSKU: item.SellerSKU,
+      QuantityShipped: item.Quantity
+    }));
+
+    const payload = {
+      InboundShipmentHeader: shipmentHeader,
+      InboundShipmentItems: shipmentItems,
+      MarketplaceId: DEFAULT_MARKETPLACE_ID
+    };
+
+    const options = Object.assign({}, this.options, {
+      payload: JSON.stringify(payload)
+    });
+
+    const response = UrlFetchApp.fetch(`${this.BASE_URL}/shipments/${shipmentId}`, options);
+    const status = response.getResponseCode();
+    const body = response.getContentText();
+
+    if (status !== 200) {
       let json;
-      try { json = JSON.parse(body); } catch(e) {}
-      const errorMessage = json && json.errors ? JSON.stringify(json.errors) : body;
-      throw new Error(`納品プランの作成に失敗しました (status ${status}): ${errorMessage}`);
-    }
-
-    return JSON.parse(body);
-  }
-
-  _generatePlacementOptions(inboundPlanId) {
-    const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/inboundPlans/${inboundPlanId}/placementOptions`, this.options);
-    const status = response.getResponseCode();
-    const body = response.getContentText();
-    
-    if (status !== 202) {
-      throw new Error(`Placement Options 生成に失敗しました (status ${status}): ${body}`);
-    }
-    return JSON.parse(body).operationId;
-  }
-
-  _pollOperation(operationId, operationName) {
-    console.log(`${operationName} 待機中... (OperationId: ${operationId})`);
-    const start = Date.now();
-    const timeout = 300000; // 5分
-
-    while (Date.now() - start < timeout) {
-      Utilities.sleep(5000);
       try {
-        console.log(`${operationName}: ステータス確認リクエスト送信...`);
-        const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/operations/${operationId}`, {
-          headers: this.options.headers,
-          muteHttpExceptions: true
-        });
-        console.log(`${operationName}: レスポンス受信 (Status Code: ${response.getResponseCode()})`);
-        
-        const json = JSON.parse(response.getContentText());
-        console.log(`${operationName} status: ${json.operationStatus}`);
-        
-        if (json.operationStatus === 'SUCCESS') {
-          console.log(`${operationName} 完了`);
-          return;
-        } else if (json.operationStatus === 'FAILED') {
-          throw new Error(`${operationName} 失敗: ${JSON.stringify(json.operationProblems)}`);
-        }
-      } catch (e) {
-        console.warn(`${operationName} ポーリング中にエラー (再試行します): ${e.message}`);
+        json = JSON.parse(body);
+      } catch(e) {
+        throw new Error(`納品作成APIレスポンスの解析に失敗しました: ${body}`);
       }
+      const errorMessage = json && json.errors ? JSON.stringify(json.errors) : body;
+      throw new Error(`納品の作成に失敗しました (shipmentId: ${shipmentId}, status ${status}): ${errorMessage}`);
     }
-    throw new Error(`${operationName} タイムアウト`);
-  }
 
-  _listPlacementOptions(inboundPlanId) {
-    const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/inboundPlans/${inboundPlanId}/placementOptions`, {
-      headers: this.options.headers,
-      muteHttpExceptions: true
-    });
-    const json = JSON.parse(response.getContentText());
-    if (!json.placementOptions || json.placementOptions.length === 0) {
-      throw new Error('有効なPlacement Optionsがありません');
-    }
-    return json.placementOptions;
-  }
-
-  _confirmPlacementOption(inboundPlanId, placementOptionId) {
-    const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/inboundPlans/${inboundPlanId}/placementOptions/${placementOptionId}/confirmation`, this.options);
-    const status = response.getResponseCode();
-    const body = response.getContentText();
-    
-    if (status !== 202) {
-       throw new Error(`Placement Option 確定に失敗しました (status ${status}): ${body}`);
-    }
-    return JSON.parse(body).operationId;
-  }
-  
-  _listShipments(inboundPlanId) {
-    const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/inboundPlans/${inboundPlanId}/shipments`, {
-      headers: this.options.headers,
-      muteHttpExceptions: true
-    });
-    return JSON.parse(response.getContentText()).shipments || [];
+    return JSON.parse(body).payload;
   }
 
   createPlan(items){
-    // 1. 納品プラン作成 (リトライ付き)
-    const planResult = this._createInboundPlanWithRetry(items);
-    const inboundPlanId = planResult.inboundPlanId;
-    const createOperationId = planResult.operationId;
-    console.log(`Inbound Plan Created: ${inboundPlanId} (Operation: ${createOperationId})`);
+    // 1. createInboundShipmentPlan
+    const planResponse = this._createShipmentPlan(items);
+    const createdShipments = [];
 
-    // 1.5 プラン作成完了待機
-    this._pollOperation(createOperationId, "Inbound Plan Creation");
-
-    // 2. Placement Options 生成
-    const generateOpId = this._generatePlacementOptions(inboundPlanId);
-    this._pollOperation(generateOpId, "Placement Options Generation");
-
-    // 3. オプション取得と選択
-    const options = this._listPlacementOptions(inboundPlanId);
-    // 最初のオプションを選択（手数料なしや分割なしなどのロジックがあればここに追加）
-    const selectedOption = options[0];
-    console.log(`Selected Placement Option: ${selectedOption.placementOptionId}`);
-
-    // 4. オプション確定
-    const confirmOpId = this._confirmPlacementOption(inboundPlanId, selectedOption.placementOptionId);
-    this._pollOperation(confirmOpId, "Placement Option Confirmation");
-
-    // 5. Shipment情報取得
-    const shipments = this._listShipments(inboundPlanId);
-    console.log(`Shipments Created: ${shipments.map(s => s.shipmentId).join(', ')}`);
+    // 2. createInboundShipment for each plan
+    for (const plan of planResponse.InboundShipmentPlans) {
+      const shipmentId = plan.ShipmentId;
+      try {
+        this._createInboundShipment(shipmentId, plan);
+        createdShipments.push(shipmentId);
+        console.log(`納品を作成しました: ${shipmentId}`);
+      } catch (e) {
+        console.error(`納品の作成に失敗しました (${shipmentId}): ${e.message}`);
+        throw e;
+      }
+    }
 
     return {
-      inboundPlanId,
-      operationId: planResult.operationId,
-      link: `${this.PLAN_LINK_BASE}/fba/sendtoamazon/pack_later_confirm_shipments?wf=${inboundPlanId}`,
-      shipmentIds: shipments.map(s => s.shipmentId)
+      link: "https://sellercentral.amazon.co.jp/gp/fba/inbound-queue/index.html",
+      shipmentIds: createdShipments
     };
   }
 }
