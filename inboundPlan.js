@@ -46,12 +46,7 @@ function generatePlanNameText(data, setting) {
 
 function writePlanResultToSheet(sheet, setting, planResult, data) {
   if (planResult.link) {
-    let displayText;
-    if (planResult.shipmentIds && planResult.shipmentIds.length > 0) {
-      displayText = planResult.shipmentIds.join(', ');
-    } else {
-      displayText = generatePlanNameText(data, setting);
-    }
+    const displayText = planResult.inboundPlanId || generatePlanNameText(data, setting);
     
     const linkFormula = `=HYPERLINK("${planResult.link}", "${displayText}")`;
     sheet.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
