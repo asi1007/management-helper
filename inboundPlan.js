@@ -33,14 +33,18 @@ function formatDateMMDD(date) {
   return `${monthStr}/${dayStr}`;
 }
 
+function generatePlanNameText(data, setting) {
+  const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
+  const dateStr = formatDateMMDD(new Date());
+  const deliveryCategory = data.length > 0 && deliveryCategoryColumn !== null 
+    ? (data[0][deliveryCategoryColumn] || '') 
+    : '';
+  return `${dateStr}${deliveryCategory}`;
+}
+
 function writePlanResultToSheet(sheet, setting, planResult, data) {
   if (planResult.link) {
-    const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
-    const dateStr = formatDateMMDD(new Date());
-    const deliveryCategory = data.length > 0 && deliveryCategoryColumn !== null 
-      ? (data[0][deliveryCategoryColumn] || '') 
-      : '';
-    const planNameText = `${dateStr}${deliveryCategory}`;
+    const planNameText = generatePlanNameText(data, setting);
     const linkFormula = `=HYPERLINK("${planResult.link}", "${planNameText}")`;
     sheet.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
   }
@@ -64,86 +68,99 @@ function handlePrepOwnerError(error, itemMap, regex, newOwnerValue, logMessage) 
   return false;
 }
 
+function initializeItemsWithPrepOwner(items) {
+  return items.map(item => ({
+    ...item,
+    prepOwner: 'NONE'
+  }));
+}
+
+function parseErrorsFromMessage(errorMessage) {
+  const jsonMatch = errorMessage.match(/\[.*\]/);
+  if (!jsonMatch) {
+    return null;
+  }
+  
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (jsonError) {
+    return null;
+  }
+}
+
+function handlePrepOwnerErrors(errors, itemMap) {
+  let needsRetry = false;
+  
+  for (const error of errors) {
+    const requiresPrepOwner = handlePrepOwnerError(
+      error, 
+      itemMap, 
+      /ERROR: (.+?) requires prepOwner/, 
+      'SELLER', 
+      'SKU ${msku} は梱包が必要なため、prepOwnerをSELLERに変更します。'
+    );
+    
+    const doesNotRequirePrepOwner = handlePrepOwnerError(
+      error, 
+      itemMap, 
+      /ERROR: (.+?) does not require prepOwner/, 
+      'NONE', 
+      'SKU ${msku} は梱包不要なため、prepOwnerをNONEに変更します。'
+    );
+    
+    needsRetry = needsRetry || requiresPrepOwner || doesNotRequirePrepOwner;
+  }
+  
+  return needsRetry;
+}
+
+function createInboundPlanWithRetry(planCreator, items, maxRetries) {
+  let currentItems = items;
+  let retryCount = 0;
+
+  while (true) {
+    try {
+      return planCreator.createPlan(currentItems);
+    } catch (e) {
+      if (retryCount >= maxRetries) {
+        console.error(`最大リトライ回数(${maxRetries})を超えました。最後のエラー: ${e.message}`);
+        throw e;
+      }
+
+      const errors = parseErrorsFromMessage(e.message);
+      if (!errors) {
+        console.error(`prepOwner以外のエラーが発生しました: ${e.message}`);
+        throw e;
+      }
+
+      const itemMap = new Map(currentItems.map(item => [item.msku, item]));
+      const needsRetry = handlePrepOwnerErrors(errors, itemMap);
+
+      if (!needsRetry) {
+        console.error(`prepOwner以外のエラーが発生しました: ${e.message}`);
+        throw e;
+      }
+      
+      console.log(`prepOwner設定を修正して再試行します (${retryCount + 1}/${maxRetries})`);
+      retryCount++;
+    }
+  }
+}
+
 function createInboundPlanForRows(sheet, setting, data, accessToken) {
   const { "sku": skuIndex, "数量": quantityIndex } = setting.getMultiple(["sku", "数量"]);
-  // SKUごとにアイテムを集約
   const aggregatedItems = aggregateItems(data, skuIndex, quantityIndex);
-
   const items = Object.values(aggregatedItems);
+  
   if (items.length === 0) {
     throw new Error('納品プランを作成できる有効なSKUがありません');
   }
 
-  // 初期値として全てのアイテムのprepOwnerを'NONE'に設定
-  let currentItems = items.map(item => ({
-    ...item,
-    prepOwner: 'NONE'
-  }));
-
-  // プランを作成 (エラー時のリトライロジック付き)
+  const initializedItems = initializeItemsWithPrepOwner(items);
   const planCreator = new InboundPlanCreator(accessToken);
-  let planResult;
-  let retryCount = 0;
-  const MAX_RETRIES = 3;
-
-  while (true) {
-    try {
-      planResult = planCreator.createPlan(currentItems);
-      break; // 成功したらループを抜ける
-    } catch (e) {
-      if (retryCount >= MAX_RETRIES) {
-        console.error(`最大リトライ回数(${MAX_RETRIES})を超えました。最後のエラー: ${e.message}`);
-        throw e;
-      }
-
-      const errorMessage = e.message;
-      const jsonMatch = errorMessage.match(/\[.*\]/);
-      if (!jsonMatch) throw e; // JSONが含まれていないエラーはそのまま投げる
-
-      let errors;
-      try {
-        errors = JSON.parse(jsonMatch[0]);
-      } catch (jsonError) {
-        throw e; // JSONパースエラーならそのまま投げる
-      }
-
-      let needsRetry = false;
-      // SKUをキーにしたマップを作成（高速検索用）
-      const itemMap = new Map(currentItems.map(item => [item.msku, item]));
-
-      for (const error of errors) {
-        // パターン1: requires prepOwner but NONE was assigned -> SELLERにする
-        needsRetry = handlePrepOwnerError(
-          error, 
-          itemMap, 
-          /ERROR: (.+?) requires prepOwner/, 
-          'SELLER', 
-          'SKU ${msku} は梱包が必要なため、prepOwnerをSELLERに変更します。'
-        )
-
-        // パターン2: does not require prepOwner but SELLER was assigned -> NONEにする
-        needsRetry = needsRetry || handlePrepOwnerError(
-          error, 
-          itemMap, 
-          /ERROR: (.+?) does not require prepOwner/, 
-          'NONE', 
-          'SKU ${msku} は梱包不要なため、prepOwnerをNONEに変更します。'
-        )
-      }
-
-      if (!needsRetry) {
-        console.error(`prepOwner以外のエラーが発生しました: ${e.message}`);
-        throw e; // prepOwner関連のエラーでなければそのまま投げる
-      }
-      
-      console.log(`prepOwner設定を修正して再試行します (${retryCount + 1}/${MAX_RETRIES})`);
-      retryCount++;
-    }
-  }
-
-  // プランリンクと発送日を書き込み
+  const planResult = createInboundPlanWithRetry(planCreator, initializedItems, 3);
+  
   writePlanResultToSheet(sheet, setting, planResult, data);
-
   return planResult;
 }
 
