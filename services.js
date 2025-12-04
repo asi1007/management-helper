@@ -253,31 +253,31 @@ class InboundPlanCreator{
     console.log(`Inbound Plan Created: ${inboundPlanId} (Operation: ${createOperationId})`);
 
     // 1.5 プラン作成完了待機
-    this._pollOperation(createOperationId, "Inbound Plan Creation");
+    // this._pollOperation(createOperationId, "Inbound Plan Creation");
 
     // 2. Placement Options 生成
-    const generateOpId = this._generatePlacementOptions(inboundPlanId);
-    this._pollOperation(generateOpId, "Placement Options Generation");
+    // const generateOpId = this._generatePlacementOptions(inboundPlanId);
+    // this._pollOperation(generateOpId, "Placement Options Generation");
 
     // 3. オプション取得と選択
-    const options = this._listPlacementOptions(inboundPlanId);
-    // 最初のオプションを選択（手数料なしや分割なしなどのロジックがあればここに追加）
-    const selectedOption = options[0];
-    console.log(`Selected Placement Option: ${selectedOption.placementOptionId}`);
+    // const options = this._listPlacementOptions(inboundPlanId);
+    // // 最初のオプションを選択（手数料なしや分割なしなどのロジックがあればここに追加）
+    // const selectedOption = options[0];
+    // console.log(`Selected Placement Option: ${selectedOption.placementOptionId}`);
 
     // 4. オプション確定
-    const confirmOpId = this._confirmPlacementOption(inboundPlanId, selectedOption.placementOptionId);
-    this._pollOperation(confirmOpId, "Placement Option Confirmation");
+    // const confirmOpId = this._confirmPlacementOption(inboundPlanId, selectedOption.placementOptionId);
+    // this._pollOperation(confirmOpId, "Placement Option Confirmation");
 
     // 5. Shipment情報取得
-    const shipments = this._listShipments(inboundPlanId);
-    console.log(`Shipments Created: ${shipments.map(s => s.shipmentId).join(', ')}`);
+    // const shipments = this._listShipments(inboundPlanId);
+    // console.log(`Shipments Created: ${shipments.map(s => s.shipmentId).join(', ')}`);
 
     return {
       inboundPlanId,
       operationId: planResult.operationId,
       link: `${this.PLAN_LINK_BASE}/fba/sendtoamazon/pack_later_confirm_shipments?wf=${inboundPlanId}`,
-      shipmentIds: shipments.map(s => s.shipmentId)
+      shipmentIds: [] // shipments.map(s => s.shipmentId)
     };
   }
 }
