@@ -199,12 +199,12 @@ class InboundPlanCreator{
         console.log(`${operationName}: レスポンス受信 (Status Code: ${response.getResponseCode()})`);
         
         const json = JSON.parse(response.getContentText());
-        console.log(`${operationName} status: ${json.status}`);
+        console.log(`${operationName} status: ${json.operationStatus}`);
         
-        if (json.status === 'SUCCEEDED') {
+        if (json.operationStatus === 'SUCCESS') {
           console.log(`${operationName} 完了`);
           return;
-        } else if (json.status === 'FAILED') {
+        } else if (json.operationStatus === 'FAILED') {
           throw new Error(`${operationName} 失敗: ${JSON.stringify(json.operationProblems)}`);
         }
       } catch (e) {
