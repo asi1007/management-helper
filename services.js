@@ -186,21 +186,29 @@ class InboundPlanCreator{
   _pollOperation(operationId, operationName) {
     console.log(`${operationName} 待機中... (OperationId: ${operationId})`);
     const start = Date.now();
-    const timeout = 120000; // 2分
+    const timeout = 300000; // 5分
 
     while (Date.now() - start < timeout) {
-      Utilities.sleep(2000);
-      const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/operations/${operationId}`, {
-        headers: this.options.headers,
-        muteHttpExceptions: true
-      });
-      const json = JSON.parse(response.getContentText());
-      
-      if (json.status === 'SUCCEEDED') {
-        console.log(`${operationName} 完了`);
-        return;
-      } else if (json.status === 'FAILED') {
-        throw new Error(`${operationName} 失敗: ${JSON.stringify(json.operationProblems)}`);
+      Utilities.sleep(5000);
+      try {
+        console.log(`${operationName}: ステータス確認リクエスト送信...`);
+        const response = UrlFetchApp.fetch(`${this.API_BASE_URL}/operations/${operationId}`, {
+          headers: this.options.headers,
+          muteHttpExceptions: true
+        });
+        console.log(`${operationName}: レスポンス受信 (Status Code: ${response.getResponseCode()})`);
+        
+        const json = JSON.parse(response.getContentText());
+        console.log(`${operationName} status: ${json.status}`);
+        
+        if (json.status === 'SUCCEEDED') {
+          console.log(`${operationName} 完了`);
+          return;
+        } else if (json.status === 'FAILED') {
+          throw new Error(`${operationName} 失敗: ${JSON.stringify(json.operationProblems)}`);
+        }
+      } catch (e) {
+        console.warn(`${operationName} ポーリング中にエラー (再試行します): ${e.message}`);
       }
     }
     throw new Error(`${operationName} タイムアウト`);
