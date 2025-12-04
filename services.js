@@ -241,7 +241,11 @@ class InboundPlanCreator{
     // 1. 納品プラン作成 (リトライ付き)
     const planResult = this._createInboundPlanWithRetry(items);
     const inboundPlanId = planResult.inboundPlanId;
-    console.log(`Inbound Plan Created: ${inboundPlanId}`);
+    const createOperationId = planResult.operationId;
+    console.log(`Inbound Plan Created: ${inboundPlanId} (Operation: ${createOperationId})`);
+
+    // 1.5 プラン作成完了待機
+    this._pollOperation(createOperationId, "Inbound Plan Creation");
 
     // 2. Placement Options 生成
     const generateOpId = this._generatePlacementOptions(inboundPlanId);
