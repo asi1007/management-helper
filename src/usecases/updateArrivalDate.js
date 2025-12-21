@@ -3,22 +3,11 @@ function updateArrivalDate() {
   const homeShipmentSheet = new HomeShipmentSheet(config.SHEET_ID, config.HOME_SHIPMENT_SHEET_NAME, setting);
   const purchaseSheet = new PurchaseSheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
 
-  const activeSheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const activeRange = activeSheet.getActiveRange();
-  
-  if (activeSheet.getName() !== config.HOME_SHIPMENT_SHEET_NAME) {
-    throw new Error('自宅発送用シートで実行してください');
-  }
-
-  // アクティブセルの行の追跡番号を取得
-  const trackingNumberColumnIndex = homeShipmentSheet.getColumnIndex('追跡番号') + 1; // 1-based index for getRange
-  const rowNumColumnIndex = homeShipmentSheet.getColumnIndex('行番号') + 1; // 1-based index for getRange
-  const activeRowIndex = activeRange.getRow();
-  
-  // 行番号（ID）を取得
-  const rowId = activeSheet.getRange(activeRowIndex, rowNumColumnIndex).getValue();
+  // アクティブセルの行の追跡番号と行番号（ID）を取得
+  const rowId = homeShipmentSheet.getActiveRowValue('行番号');
   console.log(`取得した行ID: ${rowId}`);
-  const trackingNumber = activeSheet.getRange(activeRowIndex, trackingNumberColumnIndex).getValue();
+  
+  const trackingNumber = homeShipmentSheet.getActiveRowValue('追跡番号');
 
   if (!trackingNumber) {
     throw new Error('追跡番号が見つかりません');

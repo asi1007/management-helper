@@ -17,6 +17,16 @@ class HomeShipmentSheet {
     return index;
   }
 
+  getActiveRowValue(columnName) {
+    const activeSheet = SpreadsheetApp.getActiveSheet();
+    if (activeSheet.getName() !== this.sheet.getName()) {
+      throw new Error(`アクティブなシートが "${this.sheet.getName()}" ではありません`);
+    }
+    const activeRowIndex = activeSheet.getActiveRange().getRow();
+    const columnIndex = this.getColumnIndex(columnName);
+    return this.sheet.getRange(activeRowIndex, columnIndex + 1).getValue();
+  }
+
   getRowNum(columnName, value) {
     const columnIndex = this.getColumnIndex(columnName);
     for (let i = 0; i < this.data.length; i++) {
