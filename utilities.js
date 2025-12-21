@@ -1,4 +1,19 @@
-/* exported getEnvConfig, SettingSheet, getAuthToken, getConfigSettingAndToken */
+/* exported getEnvConfig, SettingSheet, getAuthToken, getConfigSettingAndToken, DEFAULT_MARKETPLACE_ID, SHIP_FROM_ADDRESS */
+
+const DEFAULT_MARKETPLACE_ID = 'A1VC38T7YXB528';
+
+const SHIP_FROM_ADDRESS = {
+  name: '和田篤',
+  companyName: '',
+  addressLine1: '久喜本847-14',
+  addressLine2: '',
+  city: '久喜市',
+  stateOrProvinceCode: '埼玉県',
+  postalCode: '3460031',
+  countryCode: 'JP',
+  phoneNumber: '05035540337',
+  email: ''
+};
 
 function getEnvConfig() {
   const properties = PropertiesService.getScriptProperties();
