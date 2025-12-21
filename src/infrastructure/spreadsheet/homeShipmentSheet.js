@@ -3,13 +3,22 @@
 class HomeShipmentSheet {
   constructor(sheetID, sheetName, setting){
     this.sheet = SpreadsheetApp.openById(sheetID).getSheetByName(sheetName);
-    this.setting = setting;
     this.lastRow = this.sheet.getLastRow();
     this.data = this.sheet.getRange(2, 1, this.lastRow, 100).getValues();
+    // 3行目をヘッダーとして取得（配列インデックスは1）
+    this.headers = this.data[1]; 
+  }
+
+  getColumnIndex(columnName) {
+    const index = this.headers.indexOf(columnName);
+    if (index === -1) {
+      throw new Error(`列 "${columnName}" が見つかりません`);
+    }
+    return index;
   }
 
   getRowNum(columnName, value) {
-    const columnIndex = this.setting.get(columnName);
+    const columnIndex = this.getColumnIndex(columnName);
     for (let i = 0; i < this.data.length; i++) {
       if (String(this.data[i][columnIndex]) === String(value)) {
         return i + 2;
@@ -19,8 +28,8 @@ class HomeShipmentSheet {
   }
 
   getRowIdsByTracking(trackingNumber) {
-    const trackingColumnIndex = this.setting.get('追跡番号');
-    const rowIdColumnIndex = this.setting.get('行番号');
+    const trackingColumnIndex = this.getColumnIndex('追跡番号');
+    const rowIdColumnIndex = this.getColumnIndex('行番号');
     const rowIds = [];
     
     for (let i = 0; i < this.data.length; i++) {

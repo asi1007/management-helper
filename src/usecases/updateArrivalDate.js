@@ -11,8 +11,8 @@ function updateArrivalDate() {
   }
 
   // アクティブセルの行の追跡番号を取得
-  const trackingNumberColumnIndex = setting.get('追跡番号') + 1;
-  const rowNumColumnIndex = setting.get('行番号') + 1;
+  const trackingNumberColumnIndex = homeShipmentSheet.getColumnIndex('追跡番号') + 1; // 1-based index for getRange
+  const rowNumColumnIndex = homeShipmentSheet.getColumnIndex('行番号') + 1; // 1-based index for getRange
   const activeRowIndex = activeRange.getRow();
   
   // 行番号（ID）を取得
