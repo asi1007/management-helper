@@ -38,4 +38,12 @@ class HomeShipmentSheet extends BaseSheet {
     }
     return rowIds;
   }
+
+  getActiveRowNumbers() {
+    const activeData = this.getActiveRowData();
+    const rowNumberColumnIndex = this._getColumnIndex("行番号");
+    const rowNumbers = activeData.map(row => row[rowNumberColumnIndex]).filter(rn => rn !== null && rn !== undefined && rn !== '');
+    console.log(`取得した行番号: ${JSON.stringify(rowNumbers)}`);
+    return rowNumbers;
+  }
 }
