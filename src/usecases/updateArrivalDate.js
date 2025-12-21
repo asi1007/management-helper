@@ -12,7 +12,12 @@ function updateArrivalDate() {
 
   // アクティブセルの行の追跡番号を取得
   const trackingNumberColumnIndex = setting.get('追跡番号') + 1;
+  const rowNumColumnIndex = setting.get('行番号') + 1;
   const activeRowIndex = activeRange.getRow();
+  
+  // 行番号（ID）を取得
+  const rowId = activeSheet.getRange(activeRowIndex, rowNumColumnIndex).getValue();
+  console.log(`取得した行ID: ${rowId}`);
   const trackingNumber = activeSheet.getRange(activeRowIndex, trackingNumberColumnIndex).getValue();
 
   if (!trackingNumber) {
@@ -21,22 +26,28 @@ function updateArrivalDate() {
 
   console.log(`追跡番号: ${trackingNumber} を処理します`);
 
-  // 同じ追跡番号のすべての行番号を取得（自宅発送シート内）
-  const homeShipmentRowNums = homeShipmentSheet.getRowNumsByTracking(trackingNumber);
-  console.log(`対象行番号(自宅発送シート): ${homeShipmentRowNums.join(', ')}`);
+  // 同じ追跡番号のすべての行番号(ID)を取得（自宅発送シート内）
+  const homeShipmentRowIds = homeShipmentSheet.getRowIdsByTracking(trackingNumber);
+  console.log(`対象行ID(自宅発送シート): ${homeShipmentRowIds.join(', ')}`);
 
-  // 仕入管理シートの同じ行番号の「自宅到着日」に日付を書き込み
-  // 自宅発送シートと仕入管理シートは行が同期している（同じ行番号が同じ商品を指す）という前提
+  // 仕入管理シートの同じ行番号(ID)を持つ行の「自宅到着日」に日付を書き込み
   const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
-  const arrivalDateColumnIndex = setting.get('自宅到着日') + 1;
+  const arrivalDateColumnIndex = setting.get('自宅到着日') + 1; // 列番号は設定から取得（1始まり）
 
   let successCount = 0;
-  for (const rowNum of homeShipmentRowNums) {
+  for (const targetRowId of homeShipmentRowIds) {
     try {
-      purchaseSheet.writeCell(rowNum, arrivalDateColumnIndex, today);
-      successCount++;
+      // IDから仕入管理シート上の実際の行番号を検索
+      const targetRowNum = purchaseSheet.getRowNum('行番号', targetRowId);
+      
+      if (targetRowNum) {
+        purchaseSheet.writeCell(targetRowNum, arrivalDateColumnIndex, today);
+        successCount++;
+      } else {
+        console.warn(`行ID ${targetRowId} が仕入管理シートで見つかりませんでした`);
+      }
     } catch (e) {
-      console.error(`行番号 ${rowNum} への書き込みに失敗: ${e.message}`);
+      console.error(`行ID ${targetRowId} への書き込みに失敗: ${e.message}`);
     }
   }
 

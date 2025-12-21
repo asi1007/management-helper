@@ -9,6 +9,16 @@ class PurchaseSheet {
     this.rowNumbers = [];
   }
 
+  getRowNum(columnName, value) {
+    const columnIndex = this.setting.get(columnName);
+    for (let i = 0; i < this.data.length; i++) {
+      if (String(this.data[i][columnIndex]) === String(value)) {
+        return i + 2;
+      }
+    }
+    return null;
+  }
+
   getActiveRowData(){
     const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     const activeSheet = activeSpreadsheet.getActiveSheet();

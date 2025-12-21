@@ -18,15 +18,17 @@ class HomeShipmentSheet {
     return null;
   }
 
-  getRowNumsByTracking(trackingNumber) {
-    const columnIndex = this.setting.get('追跡番号');
-    const rowNums = [];
+  getRowIdsByTracking(trackingNumber) {
+    const trackingColumnIndex = this.setting.get('追跡番号');
+    const rowIdColumnIndex = this.setting.get('行番号');
+    const rowIds = [];
+    
     for (let i = 0; i < this.data.length; i++) {
-      if (String(this.data[i][columnIndex]) === String(trackingNumber)) {
-        rowNums.push(i + 2);
+      if (String(this.data[i][trackingColumnIndex]) === String(trackingNumber)) {
+        rowIds.push(this.data[i][rowIdColumnIndex]);
       }
     }
-    return rowNums;
+    return rowIds;
   }
 
   writeCell(rowNum, columnNum, value){
