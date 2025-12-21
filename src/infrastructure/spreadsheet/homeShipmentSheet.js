@@ -1,11 +1,8 @@
 /* exported HomeShipmentSheet */
 
-class HomeShipmentSheet {
-  constructor(sheetID, sheetName, setting){
-    this.sheet = SpreadsheetApp.openById(sheetID).getSheetByName(sheetName);
-    this.lastRow = this.sheet.getLastRow();
-    this.data = this.sheet.getRange(2, 1, this.lastRow, 100).getValues();
-    // 3行目をヘッダーとして取得（配列インデックスは1）
+class HomeShipmentSheet extends BaseSheet {
+  constructor(sheetID, sheetName){
+    super(sheetID, sheetName);
     this.headers = this.data[1]; 
   }
 
@@ -17,50 +14,20 @@ class HomeShipmentSheet {
     return index;
   }
 
-  getActiveRowValue(columnName) {
-    const activeSheet = SpreadsheetApp.getActiveSheet();
-    if (activeSheet.getName() !== this.sheet.getName()) {
-      throw new Error(`アクティブなシートが "${this.sheet.getName()}" ではありません`);
-    }
-    const activeRowIndex = activeSheet.getActiveRange().getRow();
+  getValue(rowID, columnName) {
     const columnIndex = this.getColumnIndex(columnName);
-    return this.sheet.getRange(activeRowIndex, columnIndex + 1).getValue();
+    return this.sheet.getRange(rowID, columnIndex + 1).getValue();
   }
 
-  getRowNum(columnName, value) {
-    const columnIndex = this.getColumnIndex(columnName);
-    for (let i = 0; i < this.data.length; i++) {
-      if (String(this.data[i][columnIndex]) === String(value)) {
-        return i + 2;
-      }
-    }
-    return null;
-  }
-
-  getRowIdsByTracking(trackingNumber) {
-    const trackingColumnIndex = this.getColumnIndex('追跡番号');
-    const rowIdColumnIndex = this.getColumnIndex('行番号');
-    const rowIds = [];
+  getRowIdsByTracking() {
+    const tracking= getActiveValue('追跡番号');
     
     for (let i = 0; i < this.data.length; i++) {
+      rowIds = tracking ("行番号");
       if (String(this.data[i][trackingColumnIndex]) === String(trackingNumber)) {
         rowIds.push(this.data[i][rowIdColumnIndex]);
       }
     }
     return rowIds;
-  }
-
-  writeCell(rowNum, columnNum, value){
-    try {
-      if (typeof value === 'object' && value.type === 'formula') {
-        this.sheet.getRange(rowNum, columnNum).setFormula(value.value);
-      } else {
-        this.sheet.getRange(rowNum, columnNum).setValue(value);
-      }
-      console.log(`${rowNum}行目の${columnNum}に書き込みました`);
-    } catch (e) {
-      console.warn(`${rowNum}行目の${columnNum}への書き込みに失敗しました: ${e.message}`);
-      throw e;
-    }
   }
 }
