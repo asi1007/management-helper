@@ -2,7 +2,7 @@
 
 class BaseSheet {
   constructor(sheetID, sheetName){
-    this.sheet = SpreadsheetApp.openById(sheetID).getSheetByName(sheetName);
+    this.sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
     this.lastRow = this.sheet.getLastRow();
     this.data = this.sheet.getRange(2, 1, this.lastRow, 100).getValues();
   }
@@ -47,22 +47,20 @@ class BaseSheet {
     const selectedRowNumbers = new Set();
     const activeRangeList = activeSheet.getActiveRangeList();
 
-    // 複数範囲選択に対応
     if (activeRangeList && activeRangeList.getRanges().length > 0) {
       const ranges = activeRangeList.getRanges();
       for (const range of ranges) {
         this._addSelectedRowNumbers(selectedRowNumbers, range);
       }
-    } else {
-      const activeRange = activeSheet.getActiveRange();
-      this._addSelectedRowNumbers(selectedRowNumbers, activeRange);
     }
+    console.log(`Selected row numbers: ${Array.from(selectedRowNumbers).join(', ')}`);
     return selectedRowNumbers;
   }
 
   _addSelectedRowNumbers(selectedRowNumbers, activeRange){
       const startRow = activeRange.getRow();
       const numRows = activeRange.getNumRows();
+      console.log(`Adding rows: ${startRow} to ${startRow + numRows - 1}`);
       for (let i = 0; i < numRows; i++) {
         selectedRowNumbers.add(startRow + i);
       }

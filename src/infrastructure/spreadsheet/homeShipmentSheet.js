@@ -21,7 +21,9 @@ class HomeShipmentSheet extends BaseSheet {
 
   getValues(columnName) {
     const columnIndex = this._getColumnIndex(columnName);
-    return this.data.map(row => row[columnIndex]);
+    const values = this.data.map(row => row[columnIndex]);
+    console.log(`Column "${columnName}" values (first 5): ${JSON.stringify(values.slice(0, 5))}... (total ${values.length})`);
+    return values;
   }
 
   getRowIdsByTracking() {
