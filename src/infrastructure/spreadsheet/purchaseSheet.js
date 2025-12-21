@@ -11,6 +11,22 @@ class PurchaseSheet extends BaseSheet {
     this.rowNumbers = rowNumbers;
   }
 
+  filter(trackingNumbers) {
+    const trackingColumnIndex = this.setting.get('追跡番号');
+    const rowNumbers = [];
+    
+    for (let i = 0; i < this.data.length; i++) {
+      const rowTrackingNumber = String(this.data[i][trackingColumnIndex]);
+      if (trackingNumbers.some(tn => String(tn) === rowTrackingNumber)) {
+        // データ配列は0始まり、行番号は1始まり、ヘッダーが1行あるため +2
+        rowNumbers.push(i + 2);
+      }
+    }
+    
+    this.rowNumbers = rowNumbers;
+    console.log(`追跡番号でフィルタリング: ${rowNumbers.length}行が見つかりました`);
+  }
+
   writeColumn(columnName, value){
     try {
       const column = this.setting.get(columnName) + 1;
