@@ -12,6 +12,7 @@ class PurchaseSheet extends BaseSheet {
   }
 
   filter(columnName, values) {
+    console.log(`Filtering column "${columnName}" with values: ${JSON.stringify(values)}`);
     const columnIndex = this.setting.get(columnName);
     const rowNumbers = [];
     const filteredData = [];
