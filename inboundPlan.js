@@ -76,7 +76,7 @@ function createInboundPlanForRows(sheet, setting, data, accessToken) {
 function createInboundPlanFromActiveRows() {
   const { config, setting, accessToken } = getConfigSettingAndToken();
 
-  const sheet = new Sheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
+  const sheet = new PurchaseSheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
   const data = sheet.getActiveRowData();
 
   const result = createInboundPlanForRows(sheet, setting, data, accessToken);
