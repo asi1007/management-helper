@@ -1,6 +1,6 @@
-/* exported OrderInstructionSheet */
+/* exported InstructionSheet */
 
-class OrderInstructionSheet {
+class InstructionSheet {
   constructor(setting) {
     this.setting = setting;
     this.TEMPLATE_ID = '1YDBbEgxTnRZRqKi5UUsQAZfCgakdzVKNJtX6cPBZARA';

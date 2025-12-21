@@ -1,7 +1,7 @@
 // 定数
 
-function makeOrderInstructionSheet(data, setting) {
-  const instructionSheet = new OrderInstructionSheet(setting);
+function makeInstructionSheet(data, setting) {
+  const instructionSheet = new InstructionSheet(setting);
   return instructionSheet.create(data);
 }
 
@@ -108,7 +108,7 @@ function generateLabelsAndInstructions() {
     // ラベルPDFを生成
     const finalSkuNums = aggregateSkusForLabels(data, setting);
     const labelURL = loadLabelPDF(finalSkuNums, accessToken);
-    const instructionURL = makeOrderInstructionSheet(data, setting);
+    const instructionURL = makeInstructionSheet(data, setting);
     writeToSheet(sheet, data, setting, instructionURL, labelURL);
 
   } catch (error) {
