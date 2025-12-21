@@ -29,6 +29,7 @@ class PurchaseSheet extends BaseSheet {
     this.rowNumbers = rowNumbers;
     this.data = filteredData;
     console.log(`${columnName}でフィルタリング: ${rowNumbers.length}行が見つかりました`);
+    return this.data;
   }
 
   writeColumn(columnName, value){
@@ -51,5 +52,64 @@ class PurchaseSheet extends BaseSheet {
     }
   }
 
+  _generatePlanNameText() {
+    const deliveryCategoryColumn = this.setting.getOptional ? this.setting.getOptional("納品分類") : null;
+    const dateStr = this._formatDateMMDD(new Date());
+    const deliveryCategory = this.data.length > 0 && deliveryCategoryColumn !== null 
+      ? (this.data[0][deliveryCategoryColumn] || '') 
+      : '';
+    return `${dateStr}${deliveryCategory}`;
+  }
+
+  _formatDateMMDD(date) {
+    const month = String(date.getMonth() + 1);
+    const day = String(date.getDate());
+    const monthStr = month.length === 1 ? '0' + month : month;
+    const dayStr = day.length === 1 ? '0' + day : day;
+    return `${monthStr}/${dayStr}`;
+  }
+
+  aggregateItems() {
+    const { "sku": skuIndex, "数量": quantityIndex, "asin": asinIndex } = this.setting.getMultiple(["sku", "数量", "asin"]);
+    const aggregatedItems = {};
+    const labelOwner = 'SELLER';
+    
+    for (let i = 0; i < this.data.length; i++) {
+      const row = this.data[i];
+      const sku = row[skuIndex];
+      const quantity = Number(row[quantityIndex]);
+      const asin = row[asinIndex];
+      
+      if (!sku || !quantity || quantity <= 0) {
+        console.warn(`納品プラン対象外: sku=${sku}, quantity=${quantity}`);
+        continue;
+      }
+      
+      if (!aggregatedItems[sku]) {
+        aggregatedItems[sku] = {
+          msku: sku,
+          asin: asin,
+          quantity: 0,
+          labelOwner: labelOwner
+        };
+      }
+      aggregatedItems[sku].quantity += quantity;
+    }
+    
+    return aggregatedItems;
+  }
+
+  writePlanResult(planResult) {
+    if (planResult.link) {
+      const displayText = planResult.inboundPlanId || this._generatePlanNameText();
+      
+      const linkFormula = `=HYPERLINK("${planResult.link}", "${displayText}")`;
+      this.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
+    }
+    
+    const dateOnly = new Date();
+    dateOnly.setHours(0, 0, 0, 0);
+    this.writeColumn("発送日", dateOnly);
+  }
 
 }
