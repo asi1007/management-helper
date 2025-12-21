@@ -9,22 +9,13 @@ class PurchaseSheet {
     this.rowNumbers = [];
   }
 
-  getRowNum(columnName, value) {
-    const columnIndex = this.setting.get(columnName);
-    for (let i = 0; i < this.data.length; i++) {
-      if (String(this.data[i][columnIndex]) === String(value)) {
-        return i + 2;
-      }
-    }
-    return null;
+  setRowNumbers(rowNumbers){
+    this.rowNumbers = rowNumbers;
   }
 
   getActiveRowData(){
-    const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    const activeSheet = activeSpreadsheet.getActiveSheet();
-
     // 2. 選択された行番号を取得
-    const selectedRowNumbers = this._getSelectedRowNumbers(activeSheet);
+    const selectedRowNumbers = this._getSelectedRowNumbers(this.sheet);
     const sortedRowNumbers = Array.from(selectedRowNumbers).sort((a, b) => a - b);
 
     const selectedRows = [];
@@ -33,8 +24,8 @@ class PurchaseSheet {
     // 3. 行番号に対応するデータを抽出
     for (const rowNum of sortedRowNumbers) {
       // フィルタまたは手動で非表示になっている行はスキップ
-      const isHiddenByFilter = activeSheet.isRowHiddenByFilter(rowNum);
-      const isHiddenByUser = activeSheet.isRowHiddenByUser(rowNum);
+      const isHiddenByFilter = this.sheet.isRowHiddenByFilter(rowNum);
+      const isHiddenByUser = this.sheet.isRowHiddenByUser(rowNum);
       const isHidden = isHiddenByFilter || isHiddenByUser;
       
       console.log(`行番号 ${rowNum}: フィルタ非表示=${isHiddenByFilter}, 手動非表示=${isHiddenByUser}, 判定=${isHidden ? 'スキップ' : '対象'}`);
