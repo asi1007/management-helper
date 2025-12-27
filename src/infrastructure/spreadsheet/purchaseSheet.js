@@ -112,4 +112,24 @@ class PurchaseSheet extends BaseSheet {
     this.writeColumn("発送日", dateOnly);
   }
 
+  decreasePurchaseQuantity(quantity) {
+    try {
+      const quantityColumnIndex = this.setting.get("数量") + 1; // 列番号は1始まり
+      let successCount = 0;
+      
+      for (const rowNum of this.rowNumbers) {
+        const currentQuantity = this.sheet.getRange(rowNum, quantityColumnIndex).getValue();
+        const newQuantity = Math.max(0, Number(currentQuantity) - quantity);
+        this.sheet.getRange(rowNum, quantityColumnIndex).setValue(newQuantity);
+        successCount++;
+        console.log(`行${rowNum}: 購入数を${currentQuantity}から${newQuantity}に減らしました`);
+      }
+      
+      console.log(`${successCount}行の購入数を${quantity}減らしました`);
+    } catch (e) {
+      console.warn(`購入数の減算に失敗しました: ${e.message}`);
+      throw e;
+    }
+  }
+
 }
