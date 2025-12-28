@@ -4,24 +4,21 @@ function recordWorkStart() {
   const { config } = getConfigSettingAndToken();
   
   // 自宅発送シートでアクティブな行のデータを取得
-  const homeSheet = new HomeShipmentSheet(config.SHEET_ID, config.HOME_SHIPMENT_SHEET_NAME);
+  const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   const activeData = homeSheet.getActiveRowData();
   
   if (activeData.length === 0) {
     throw new Error('選択された行がありません');
   }
   
-  // ASINと購入日の列インデックスを取得
-  const asinColumnIndex = homeSheet._getColumnIndex("ASIN");
-  const purchaseDateColumnIndex = homeSheet._getColumnIndex("購入日");
-  
   // 作業記録シートに追加
-  const workRecordSheet = new WorkRecordSheet(config.SHEET_ID, config.WORK_RECORD_SHEET_NAME);
+  console.log(`作業記録シート名: ${config.WORK_RECORD_SHEET_NAME}`);
+  const workRecordSheet = new WorkRecordSheet(config.WORK_RECORD_SHEET_NAME);
   const timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
   
   for (const row of activeData) {
-    const asin = row[asinColumnIndex];
-    const purchaseDate = row[purchaseDateColumnIndex];
+    const asin = row.get("ASIN");
+    const purchaseDate = row.get("購入日");
     
     if (!asin) {
       console.warn(`ASINが空の行をスキップしました`);
@@ -38,24 +35,21 @@ function recordWorkEnd() {
   const { config } = getConfigSettingAndToken();
   
   // 自宅発送シートでアクティブな行のデータを取得
-  const homeSheet = new HomeShipmentSheet(config.SHEET_ID, config.HOME_SHIPMENT_SHEET_NAME);
+  const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   const activeData = homeSheet.getActiveRowData();
   
   if (activeData.length === 0) {
     throw new Error('選択された行がありません');
   }
   
-  // ASINと購入日の列インデックスを取得
-  const asinColumnIndex = homeSheet._getColumnIndex("ASIN");
-  const purchaseDateColumnIndex = homeSheet._getColumnIndex("購入日");
-  
   // 作業記録シートに追加
-  const workRecordSheet = new WorkRecordSheet(config.SHEET_ID, config.WORK_RECORD_SHEET_NAME);
+  console.log(`作業記録シート名: ${config.WORK_RECORD_SHEET_NAME}`);
+  const workRecordSheet = new WorkRecordSheet(config.WORK_RECORD_SHEET_NAME);
   const timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
   
   for (const row of activeData) {
-    const asin = row[asinColumnIndex];
-    const purchaseDate = row[purchaseDateColumnIndex];
+    const asin = row.get("ASIN");
+    const purchaseDate = row.get("購入日");
     
     if (!asin) {
       console.warn(`ASINが空の行をスキップしました`);
@@ -72,7 +66,7 @@ function recordDefect() {
   const { config, setting } = getConfigSettingAndToken();
   
   // 1. 自宅発送シートのS列から不良原因リストを読み込み
-  const homeSheet = new HomeShipmentSheet(config.SHEET_ID, config.HOME_SHIPMENT_SHEET_NAME);
+  const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   const defectReasonList = homeSheet.getDefectReasonList();
   
   if (defectReasonList.length === 0) {
@@ -87,7 +81,8 @@ function recordDefect() {
     return;
   }
   
-  const rowNumbers = homeSheet.getActiveRowNumbers();
+  // BaseRow(row) から直接、実シート上の行番号を取得する
+  const rowNumbers = activeData.map(row => row.rowNumber).filter(rn => rn !== null && rn !== undefined && rn !== '');
   if (rowNumbers.length === 0) {
     Browser.msgBox('エラー', '選択された行に有効な行番号がありません。', Browser.Buttons.OK);
     return;
@@ -227,7 +222,7 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
   const { config, setting } = getConfigSettingAndToken();
   
   // 自宅発送シートのS列から不良原因リストを読み込み
-  const homeSheet = new HomeShipmentSheet(config.SHEET_ID, config.HOME_SHIPMENT_SHEET_NAME);
+  const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   const defectReasonList = homeSheet.getDefectReasonList();
   
   if (reasonIndex < 0 || reasonIndex >= defectReasonList.length) {
@@ -242,17 +237,14 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
     throw new Error('選択された行がありません。');
   }
   
-  const rowNumbers = homeSheet.getActiveRowNumbers();
+  // BaseRow(row) から直接、実シート上の行番号を取得する
+  const rowNumbers = activeData.map(row => row.get("行番号")).filter(rn => rn !== null && rn !== undefined && rn !== '');
   if (rowNumbers.length === 0) {
     throw new Error('選択された行に有効な行番号がありません。');
   }
   
-  // ASINと購入日の列インデックスを取得
-  const asinColumnIndex = homeSheet._getColumnIndex("ASIN");
-  const purchaseDateColumnIndex = homeSheet._getColumnIndex("購入日");
-  
   // 仕入管理シートの購入数を不良数分減らす
-  const purchaseSheet = new PurchaseSheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
+  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
   purchaseSheet.filter("行番号", rowNumbers);
   
   if (purchaseSheet.data.length === 0) {
@@ -262,12 +254,12 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
   purchaseSheet.decreasePurchaseQuantity(quantity);
   
   // 作業記録に登録
-  const workRecordSheet = new WorkRecordSheet(config.SHEET_ID, config.WORK_RECORD_SHEET_NAME);
+  const workRecordSheet = new WorkRecordSheet(config.WORK_RECORD_SHEET_NAME);
   const timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
   
   for (const row of activeData) {
-    const asin = row[asinColumnIndex];
-    const purchaseDate = row[purchaseDateColumnIndex];
+    const asin = row.get("ASIN");
+    const purchaseDate = row.get("購入日");
     
     if (!asin) {
       console.warn(`ASINが空の行をスキップしました`);
@@ -281,5 +273,4 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
   console.log(`${activeData.length}件の不良品記録を追加しました`);
   return `不良品登録を完了しました。\n不良数: ${quantity}\n原因: ${selectedReason}`;
 }
-
 

@@ -1,6 +1,6 @@
 function promptDeliveryQuantity() {
   const { config, setting } = getConfigSettingAndToken();
-  const purchaseSheet = new PurchaseSheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
+  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
 
   // ユーザーに納品数を入力してもらう
   const response = Browser.inputBox(
@@ -25,7 +25,7 @@ function splitRow() {
   const { config, setting } = getConfigSettingAndToken();
   
   // HomeShipmentSheetのアクティブ行の行番号列を取得
-  const homeSheet = new HomeShipmentSheet(config.SHEET_ID, config.HOME_SHIPMENT_SHEET_NAME);
+  const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   const rowNumbers = homeSheet.getActiveRowNumbers();
   
   if (rowNumbers.length === 0) {
@@ -33,7 +33,7 @@ function splitRow() {
   }
 
   // 行番号のリストからPurchaseSheetのデータをフィルタ
-  const purchaseSheet = new PurchaseSheet(config.SHEET_ID, config.PURCHASE_SHEET_NAME, setting);
+  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
   purchaseSheet.filter("行番号", rowNumbers);
   
   const deliveryQuantity = promptDeliveryQuantity();

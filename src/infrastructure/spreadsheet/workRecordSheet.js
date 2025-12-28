@@ -1,8 +1,8 @@
 /* exported WorkRecordSheet */
 
 class WorkRecordSheet extends BaseSheet {
-  constructor(sheetID, sheetName) {
-    super(sheetID, sheetName);
+  constructor(sheetName) {
+    super(sheetName);
   }
 
   appendRecord(asin, purchaseDate, status, timestamp, quantity = null, reason = null, comment = null) {
@@ -33,5 +33,4 @@ class WorkRecordSheet extends BaseSheet {
     console.log(`作業記録を追加しました: ASIN=${asin}, 購入日=${purchaseDate}, ステータス=${status}, 時刻=${timestamp}, 数量=${quantity}, 原因=${reason}, コメント=${comment}`);
   }
 }
-
 

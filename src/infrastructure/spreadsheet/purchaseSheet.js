@@ -1,8 +1,9 @@
 /* exported PurchaseSheet */
 
 class PurchaseSheet extends BaseSheet {
-  constructor(sheetID, sheetName, setting){
-    super(sheetID, sheetName);
+  constructor(sheetName, setting){
+    // 仕入管理シートは1行目がヘッダー前提
+    super(sheetName, 1, 1);
     this.setting = setting;
     this.rowNumbers = [];
   }
@@ -20,8 +21,8 @@ class PurchaseSheet extends BaseSheet {
     for (let i = 0; i < this.data.length; i++) {
       const rowValue = String(this.data[i][columnIndex]);
       if (values.some(v => String(v) === rowValue)) {
-        // データ配列は0始まり、行番号は1始まり、ヘッダーが1行あるため +2
-        rowNumbers.push(i + 2);
+        // BaseRow.rowNumber は実シート上の行番号
+        rowNumbers.push(this.data[i].rowNumber);
         filteredData.push(this.data[i]);
       }
     }
@@ -113,23 +114,18 @@ class PurchaseSheet extends BaseSheet {
   }
 
   decreasePurchaseQuantity(quantity) {
-    try {
-      const quantityColumnIndex = this.setting.get("数量") + 1; // 列番号は1始まり
-      let successCount = 0;
-      
-      for (const rowNum of this.rowNumbers) {
-        const currentQuantity = this.sheet.getRange(rowNum, quantityColumnIndex).getValue();
-        const newQuantity = Math.max(0, Number(currentQuantity) - quantity);
-        this.sheet.getRange(rowNum, quantityColumnIndex).setValue(newQuantity);
-        successCount++;
-        console.log(`行${rowNum}: 購入数を${currentQuantity}から${newQuantity}に減らしました`);
-      }
-      
-      console.log(`${successCount}行の購入数を${quantity}減らしました`);
-    } catch (e) {
-      console.warn(`購入数の減算に失敗しました: ${e.message}`);
-      throw e;
+    const quantityColumnIndex = this.setting.get('数量');
+    let successCount = 0;
+    
+    for (const rowNum of this.rowNumbers) {
+      const currentQuantity = Number(this.sheet.getRange(rowNum, quantityColumnIndex + 1).getValue());
+      const newQuantity = Math.max(0, currentQuantity - quantity);
+      this.sheet.getRange(rowNum, quantityColumnIndex + 1).setValue(newQuantity);
+      successCount++;
+      console.log(`行${rowNum}: 購入数を${currentQuantity}から${newQuantity}に減らしました`);
     }
+    
+    console.log(`${successCount}行の購入数を${quantity}減らしました`);
   }
 
 }

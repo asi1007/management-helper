@@ -1,21 +1,20 @@
 /* exported HomeShipmentSheet */
 
 class HomeShipmentSheet extends BaseSheet {
-  constructor(sheetID, sheetName){
-    super(sheetID, sheetName);
-    this.headers = this.data[1]; 
+  constructor(sheetName){
+    super(sheetName, 3, 1);
+    // BaseSheetのヘッダー行（row3）を列解決に使う
+    this.headers = this._headersPrimary;
   }
 
   _getColumnIndex(columnName) {
-    const index = this.headers.indexOf(columnName);
-    if (index === -1) {
-      throw new Error(`列 "${columnName}" が見つかりません`);
-    }
-    return index;
+    return this._getColumnIndexByName(columnName);
   }
 
   getValue(rowID, columnName) {
     const columnIndex = this._getColumnIndex(columnName);
+    console.log(columnIndex);
+    console.log(rowID);
     return this.sheet.getRange(rowID, columnIndex + 1).getValue();
   }
 
@@ -43,6 +42,12 @@ class HomeShipmentSheet extends BaseSheet {
     const activeData = this.getActiveRowData();
     const rowNumberColumnIndex = this._getColumnIndex("行番号");
     const rowNumbers = activeData.map(row => row[rowNumberColumnIndex]).filter(rn => rn !== null && rn !== undefined && rn !== '');
+    
+    // データ検証: 有効な行番号が存在しない場合はエラーを投げる
+    if (rowNumbers.length === 0) {
+      throw new Error('選択された行に有効な行番号がありません。');
+    }
+    
     console.log(`取得した行番号: ${JSON.stringify(rowNumbers)}`);
     return rowNumbers;
   }
