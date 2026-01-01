@@ -1,8 +1,7 @@
 /* exported InstructionSheet */
 
 class InstructionSheet {
-  constructor(setting) {
-    this.setting = setting;
+  constructor() {
     this.TEMPLATE_ID = '1YDBbEgxTnRZRqKi5UUsQAZfCgakdzVKNJtX6cPBZARA';
     this.START_ROW = 8;
     this.KEEPA_API_ENDPOINT = 'https://api.keepa.com/product';
@@ -24,20 +23,28 @@ class InstructionSheet {
 
   _extractRows(data) {
     return data.map(row => [
-      row[this.setting.get("fnsku")],
-      row[this.setting.get("asin")],
-      row[this.setting.get("数量")],
-      row[this.setting.get("備考")],
-      row[this.setting.get("注文依頼番号")]
+      this._getRowValue(row, ["fnsku", "FNSKU"]),
+      this._getRowValue(row, ["asin", "ASIN"]),
+      this._getRowValue(row, ["数量"]),
+      this._getRowValue(row, ["備考", "メモ"]),
+      this._getRowValue(row, ["注文依頼番号", "注文番号"])
     ]);
   }
 
+  _getRowValue(row, candidates) {
+    for (const c of candidates) {
+      try {
+        const v = row.get(c);
+        if (v !== undefined) return v;
+      } catch (e) {}
+    }
+    return '';
+  }
+
   _generatePlanName(data) {
-    const deliveryCategoryColumn = this.setting.getOptional ? this.setting.getOptional("納品分類") : null;
     const dateStr = this._formatDateMMDD(new Date());
-    const deliveryCategory = data.length > 0 && deliveryCategoryColumn !== null 
-      ? (data[0][deliveryCategoryColumn] || '') 
-      : '';
+    let deliveryCategory = '';
+    try { deliveryCategory = data.length > 0 ? (data[0].get("納品分類") || '') : ''; } catch (e) { deliveryCategory = ''; }
     return `${dateStr}${deliveryCategory}`;
   }
 
