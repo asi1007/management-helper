@@ -63,7 +63,7 @@ function recordWorkEnd() {
 }
 
 function recordDefect() {
-  const { config, setting } = getConfigSettingAndToken();
+  const config = getEnvConfig();
   
   // 1. 自宅発送シートのS列から不良原因リストを読み込み
   const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
@@ -219,7 +219,7 @@ function _getDefectFormHtml(defectReasonList) {
 }
 
 function _processDefectRecord(quantity, reasonIndex, comment) {
-  const { config, setting } = getConfigSettingAndToken();
+  const config = getEnvConfig();
   
   // 自宅発送シートのS列から不良原因リストを読み込み
   const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
@@ -244,7 +244,7 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
   }
   
   // 仕入管理シートの購入数を不良数分減らす
-  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
+  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   purchaseSheet.filter("行番号", rowNumbers);
   
   if (purchaseSheet.data.length === 0) {

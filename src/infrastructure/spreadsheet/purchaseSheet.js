@@ -1,10 +1,9 @@
 /* exported PurchaseSheet */
 
 class PurchaseSheet extends BaseSheet {
-  constructor(sheetName, setting){
+  constructor(sheetName){
     // 仕入管理シートは1行目がヘッダー前提
     super(sheetName, 1, 1);
-    this.setting = setting;
     this.rowNumbers = [];
   }
 
@@ -14,7 +13,7 @@ class PurchaseSheet extends BaseSheet {
 
   filter(columnName, values) {
     console.log(`Filtering column "${columnName}" with values: ${JSON.stringify(values)}`);
-    const columnIndex = this.setting.get(columnName);
+    const columnIndex = this._getColumnIndexByName(columnName);
     const rowNumbers = [];
     const filteredData = [];
     
@@ -35,7 +34,7 @@ class PurchaseSheet extends BaseSheet {
 
   writeColumn(columnName, value){
     try {
-      const column = this.setting.get(columnName) + 1;
+      const column = this._getColumnIndexByName(columnName) + 1;
       let successCount = 0;
       
       for (const rowNum of this.rowNumbers) {
@@ -54,11 +53,13 @@ class PurchaseSheet extends BaseSheet {
   }
 
   _generatePlanNameText() {
-    const deliveryCategoryColumn = this.setting.getOptional ? this.setting.getOptional("納品分類") : null;
     const dateStr = this._formatDateMMDD(new Date());
-    const deliveryCategory = this.data.length > 0 && deliveryCategoryColumn !== null 
-      ? (this.data[0][deliveryCategoryColumn] || '') 
-      : '';
+    let deliveryCategory = '';
+    try {
+      deliveryCategory = this.data.length > 0 ? (this.data[0].get("納品分類") || '') : '';
+    } catch (e) {
+      deliveryCategory = '';
+    }
     return `${dateStr}${deliveryCategory}`;
   }
 
@@ -71,15 +72,17 @@ class PurchaseSheet extends BaseSheet {
   }
 
   aggregateItems() {
-    const { "sku": skuIndex, "数量": quantityIndex, "asin": asinIndex } = this.setting.getMultiple(["sku", "数量", "asin"]);
     const aggregatedItems = {};
     const labelOwner = 'SELLER';
     
     for (let i = 0; i < this.data.length; i++) {
       const row = this.data[i];
-      const sku = row[skuIndex];
-      const quantity = Number(row[quantityIndex]);
-      const asin = row[asinIndex];
+      let sku = '';
+      let asin = '';
+      let quantity = 0;
+      try { sku = row.get("sku") || ''; } catch (e) {}
+      try { asin = row.get("ASIN") || ''; } catch (e) {}
+      try { quantity = Number(row.get("数量")); } catch (e) { quantity = 0; }
       
       if (!sku || !quantity || quantity <= 0) {
         console.warn(`納品プラン対象外: sku=${sku}, quantity=${quantity}`);
@@ -114,7 +117,7 @@ class PurchaseSheet extends BaseSheet {
   }
 
   decreasePurchaseQuantity(quantity) {
-    const quantityColumnIndex = this.setting.get('数量');
+    const quantityColumnIndex = this._getColumnIndexByName('数量');
     let successCount = 0;
     
     for (const rowNum of this.rowNumbers) {

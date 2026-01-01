@@ -1,16 +1,17 @@
 function updateArrivalDate() {
-  const { config, setting } = getConfigSettingAndToken();
+  const config = getEnvConfig();
   const homeShipmentSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   homeShipmentSheet.getActiveRowData();
   const trackingNumbers = homeShipmentSheet.getValues('追跡番号');
-  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
+  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
   purchaseSheet.filter("追跡番号",trackingNumbers);
   purchaseSheet.writeColumn('自宅到着日', today);
 }
 
 function createInboundPlanFromHomeShipmentSheet() {
-  const { config, setting, accessToken } = getConfigSettingAndToken();
+  const config = getEnvConfig();
+  const accessToken = getAuthToken();
 
   // 1. HomeShipmentSheetでアクティブな行の行番号列を取得
   const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
@@ -21,7 +22,7 @@ function createInboundPlanFromHomeShipmentSheet() {
   }
 
   // 2. 行番号のリストからPurchaseSheetのデータをフィルタ
-  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
+  const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   purchaseSheet.filter("行番号", rowNumbers);
 
   // 3. createInboundPlanForRowsで納品プランを作成

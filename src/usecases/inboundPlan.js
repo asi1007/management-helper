@@ -14,9 +14,10 @@ function createInboundPlanForRows(sheet, accessToken) {
 }
 
 function createInboundPlanFromActiveRows() {
-  const { config, setting, accessToken } = getConfigSettingAndToken();
+  const config = getEnvConfig();
+  const accessToken = getAuthToken();
 
-  const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
+  const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   sheet.getActiveRowData();
   const result = createInboundPlanForRows(sheet, accessToken);
   console.log(`Inbound plan created: inboundPlanId=${result.inboundPlanId}, operationId=${result.operationId}, link=${result.link}`);

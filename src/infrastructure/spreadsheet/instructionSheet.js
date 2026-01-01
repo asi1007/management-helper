@@ -23,11 +23,11 @@ class InstructionSheet {
 
   _extractRows(data) {
     return data.map(row => [
-      this._getRowValue(row, ["fnsku", "FNSKU"]),
-      this._getRowValue(row, ["asin", "ASIN"]),
+      this._getRowValue(row, ["FNSKU"]),
+      this._getRowValue(row, ["ASIN"]),
       this._getRowValue(row, ["数量"]),
-      this._getRowValue(row, ["備考", "メモ"]),
-      this._getRowValue(row, ["注文依頼番号", "注文番号"])
+      this._getRowValue(row, ["備考"]),
+      this._getRowValue(row, ["注文番号"])
     ]);
   }
 

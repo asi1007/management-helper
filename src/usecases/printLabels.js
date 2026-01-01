@@ -1,7 +1,7 @@
 // 定数
 
-function makeInstructionSheet(data, setting) {
-  const instructionSheet = new InstructionSheet(setting);
+function makeInstructionSheet(data) {
+  const instructionSheet = new InstructionSheet();
   return instructionSheet.create(data);
 }
 
@@ -21,14 +21,16 @@ function formatDateMMDD(date) {
   return `${monthStr}/${dayStr}`;
 }
 
-function fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken) {
+function fetchMissingFnskus(sheet, data, accessToken) {
   const fnskuGetter = new FnskuGetter(accessToken);
   
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
-    const fnsku = row[fnskuColumn];
-    const msku = row[skuColumn];
-    const rowNum = sheet.rowNumbers[i];
+    let fnsku = '';
+    let msku = '';
+    try { fnsku = row.get("FNSKU") || ''; } catch (e) {}
+    try { msku = row.get("sku") || ''; } catch (e) {}
+    const rowNum = row.rowNumber;
     
     if (!fnsku || fnsku === '') {
       console.log(`FNSKU is empty for ${msku}, fetching...`);
@@ -36,19 +38,19 @@ function fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken) {
       const fetchedFnsku = fnskuGetter.getFnsku(msku);
       
         console.log(`Fetched FNSKU for ${msku}: ${fetchedFnsku}`);
-        const col = fnskuColumn + 1;
+      const col = sheet._getColumnIndexByName("FNSKU") + 1;
       if (rowNum && col >= 1) {
           sheet.sheet.getRange(rowNum, col).setValue(fetchedFnsku);
-        row[fnskuColumn] = fetchedFnsku; // データ配列も更新
+        // BaseRow(Array)互換なのでインデックス更新もできるが、get()参照のためここでは不要
       }
     }
   }
 }
 
-function aggregateSkusForLabels(data, setting) {
+function aggregateSkusForLabels(data) {
   const skuNums = data.map(row => ({
-    msku: row[setting.get("sku")],
-    quantity: row[setting.get("数量")]
+    msku: row.get("sku"),
+    quantity: row.get("数量")
   }));
   
   // 空のSKUをフィルタリング
@@ -73,43 +75,56 @@ function aggregateSkusForLabels(data, setting) {
   }));
 }
 
-function writePlanNameToRows(sheet, data, setting, instructionURL) {
-  const planNameColumn = setting.getOptional ? setting.getOptional("プラン別名") : null;
-  const deliveryCategoryColumn = setting.getOptional ? setting.getOptional("納品分類") : null;
+function writePlanNameToRows(sheet, data, instructionURL) {
+  let planNameColumn = null;
+  let deliveryCategoryColumn = null;
+  try { planNameColumn = sheet._getColumnIndexByName("プラン別名"); } catch (e) { planNameColumn = null; }
+  try { deliveryCategoryColumn = sheet._getColumnIndexByName("納品分類"); } catch (e) { deliveryCategoryColumn = null; }
   const dateStr = formatDateMMDD(new Date());
   
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
-    const rowNum = sheet.rowNumbers[i];
-    const deliveryCategory = row[deliveryCategoryColumn] || '';
+    const rowNum = row.rowNumber;
+    const deliveryCategory = deliveryCategoryColumn !== null ? (row[deliveryCategoryColumn] || '') : '';
     const planNameValue = `${dateStr}${deliveryCategory}`;
     
-    const col = planNameColumn + 1;
-    if (rowNum && col >= 1 && instructionURL) {
-      const linkFormula = `=HYPERLINK("${instructionURL}", "${planNameValue}")`;
-      sheet.sheet.getRange(rowNum, col).setFormula(linkFormula);
-    } else if (rowNum && col >= 1) {
-      sheet.sheet.getRange(rowNum, col).setValue(planNameValue);
+    if (planNameColumn !== null) {
+      const col = planNameColumn + 1;
+      if (rowNum && col >= 1 && instructionURL) {
+        const linkFormula = `=HYPERLINK("${instructionURL}", "${planNameValue}")`;
+        sheet.sheet.getRange(rowNum, col).setFormula(linkFormula);
+      } else if (rowNum && col >= 1) {
+        sheet.sheet.getRange(rowNum, col).setValue(planNameValue);
+      }
     }
   }
 }
 
 function generateLabelsAndInstructions() {
-  const { config, setting, accessToken } = getConfigSettingAndToken();
-  const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME, setting);
+  const config = getEnvConfig();
+  const accessToken = getAuthToken();
+  const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   const data = sheet.getActiveRowData();
 
   // FNSKUが空白の場合はSP-APIから取得
-  const fnskuColumn = setting.get("fnsku");
-  const skuColumn = setting.get("sku");
-  fetchMissingFnskus(sheet, data, fnskuColumn, skuColumn, accessToken);
+  fetchMissingFnskus(sheet, data, accessToken);
   
   try {
+    // 検品シート（詳細検品マスタにASINがある場合のみ）
+    try {
+      const inspectionUrl = createInspectionSheetFromPurchaseRowsIfNeeded(data);
+      if (inspectionUrl) {
+        console.log(`検品シートを作成しました: ${inspectionUrl}`);
+      }
+    } catch (e) {
+      console.warn(`検品シート作成でエラー: ${e.message}`);
+    }
+
     // ラベルPDFを生成
-    const finalSkuNums = aggregateSkusForLabels(data, setting);
+    const finalSkuNums = aggregateSkusForLabels(data);
     const labelURL = loadLabelPDF(finalSkuNums, accessToken);
-    const instructionURL = makeInstructionSheet(data, setting);
-    writeToSheet(sheet, data, setting, instructionURL, labelURL);
+    const instructionURL = makeInstructionSheet(data);
+    writeToSheet(sheet, data, instructionURL, labelURL);
 
   } catch (error) {
     console.error(`Error generating label or instruction:`, error.message);
@@ -119,7 +134,7 @@ function generateLabelsAndInstructions() {
 }
 
 
-function writeToSheet(sheet, data, setting, instructionURL, labelURL) {
+function writeToSheet(sheet, data, instructionURL, labelURL) {
   // 依頼日列に本日日付（時刻は00:00:00）を書き込む
   const dateOnly = new Date();
   dateOnly.setHours(0, 0, 0, 0);
@@ -127,7 +142,7 @@ function writeToSheet(sheet, data, setting, instructionURL, labelURL) {
 
   // プラン別名列に日付と納品分類を書き込む（指示書URLへのリンクとして）
   try {
-    writePlanNameToRows(sheet, data, setting, instructionURL);
+    writePlanNameToRows(sheet, data, instructionURL);
   } catch (error) {
     console.warn(`プラン別名列への書き込みでエラーが発生しました: ${error.message}`);
   }
