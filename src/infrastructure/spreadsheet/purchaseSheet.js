@@ -2,8 +2,8 @@
 
 class PurchaseSheet extends BaseSheet {
   constructor(sheetName){
-    // 仕入管理シートは1行目がヘッダー前提
-    super(sheetName, 1, 1);
+    // 仕入管理シートは4行目がヘッダー前提
+    super(sheetName, 4, 1);
     this.rowNumbers = [];
   }
 
@@ -80,9 +80,9 @@ class PurchaseSheet extends BaseSheet {
       let sku = '';
       let asin = '';
       let quantity = 0;
-      try { sku = row.get("sku") || ''; } catch (e) {}
+      try { sku = row.get("SKU") || ''; } catch (e) {}
       try { asin = row.get("ASIN") || ''; } catch (e) {}
-      try { quantity = Number(row.get("数量")); } catch (e) { quantity = 0; }
+      try { quantity = Number(row.get("購入数")); } catch (e) { quantity = 0; }
       
       if (!sku || !quantity || quantity <= 0) {
         console.warn(`納品プラン対象外: sku=${sku}, quantity=${quantity}`);
@@ -117,7 +117,7 @@ class PurchaseSheet extends BaseSheet {
   }
 
   decreasePurchaseQuantity(quantity) {
-    const quantityColumnIndex = this._getColumnIndexByName('数量');
+    const quantityColumnIndex = this._getColumnIndexByName('購入数');
     let successCount = 0;
     
     for (const rowNum of this.rowNumbers) {
@@ -133,7 +133,8 @@ class PurchaseSheet extends BaseSheet {
 
   fetchMissingFnskus(accessToken) {
     const fnskuGetter = new FnskuGetter(accessToken);
-    const fnskuCol = this._getColumnIndexByName("FNSKU") + 1;
+    const fnskuColIndex = this._getColumnIndexByName("FNSKU");
+    const fnskuCol = fnskuColIndex + 1;
 
     for (const row of this.data) {
       const fnsku = row.get("FNSKU");
@@ -145,9 +146,25 @@ class PurchaseSheet extends BaseSheet {
         console.log(`Fetched FNSKU for ${sku}: ${fetchedFnsku}`);
         if (rowNum && fnskuCol >= 1) {
           this.writeCell(rowNum, fnskuCol, fetchedFnsku);
+          // 指示書作成は this.data を参照するため、メモリ上の行データも更新する
+          row[fnskuColIndex] = fetchedFnsku;
         }
       }
     }
+  }
+
+  writePlanNameToRows(instructionURL) {
+    const dateStr = this._formatDateMMDD(new Date());
+
+    return this.writeColumnByFunc("プラン別名", (row) => {
+      const deliveryCategory = row.get("納品分類") || '';
+      const planNameValue = `${dateStr}${deliveryCategory}`;
+
+      if (instructionURL) {
+        return { type: 'formula', value: `=HYPERLINK("${instructionURL}", "${planNameValue}")` };
+      }
+      return planNameValue;
+    });
   }
 
 }

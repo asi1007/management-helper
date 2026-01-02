@@ -1,78 +1,12 @@
-// 定数
-
-function makeInstructionSheet(data) {
-  const instructionSheet = new InstructionSheet();
-  return instructionSheet.create(data);
-}
-
-function loadLabelPDF(skuNums, accessToken) {
+function loadLabelPDF(labelItems, accessToken) {
   const skuDownloader = new Downloader(accessToken);
   const now = new Date();
   const datetimeStr = Utilities.formatDate(now, 'JST', 'yyyy-MM-dd');
+  const skuNums = (labelItems || []).map(i => i.toMskuQuantity());
   const result = skuDownloader.downloadLabels(skuNums, datetimeStr);
   return result.url;
 }
 
-function formatDateMMDD(date) {
-  const month = String(date.getMonth() + 1);
-  const day = String(date.getDate());
-  const monthStr = month.length === 1 ? '0' + month : month;
-  const dayStr = day.length === 1 ? '0' + day : day;
-  return `${monthStr}/${dayStr}`;
-}
-
-function aggregateSkusForLabels(data) {
-  const skuNums = data.map(row => ({
-    msku: row.get("sku"),
-    quantity: row.get("数量")
-  }));
-  
-  // 空のSKUをフィルタリング
-  const validSkuNums = skuNums.filter(s => s.msku && s.msku !== '' && s.quantity && s.quantity > 0);
-  
-  if (validSkuNums.length === 0) {
-    throw new Error('有効なSKUがありません');
-  }
-  
-  // 同じSKUの数量を合算
-  const aggregatedSkuNums = {};
-  for (const item of validSkuNums) {
-    const msku = item.msku;
-    const quantity = Number(item.quantity) || 0;
-    aggregatedSkuNums[msku] = (aggregatedSkuNums[msku] || 0) + quantity;
-  }
-  
-  // オブジェクトを配列に変換
-  return Object.keys(aggregatedSkuNums).map(msku => ({
-    msku: msku,
-    quantity: aggregatedSkuNums[msku]
-  }));
-}
-
-function writePlanNameToRows(sheet, data, instructionURL) {
-  let planNameColumn = null;
-  let deliveryCategoryColumn = null;
-  try { planNameColumn = sheet._getColumnIndexByName("プラン別名"); } catch (e) { planNameColumn = null; }
-  try { deliveryCategoryColumn = sheet._getColumnIndexByName("納品分類"); } catch (e) { deliveryCategoryColumn = null; }
-  const dateStr = formatDateMMDD(new Date());
-  
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const rowNum = row.rowNumber;
-    const deliveryCategory = deliveryCategoryColumn !== null ? (row[deliveryCategoryColumn] || '') : '';
-    const planNameValue = `${dateStr}${deliveryCategory}`;
-    
-    if (planNameColumn !== null) {
-      const col = planNameColumn + 1;
-      if (rowNum && col >= 1 && instructionURL) {
-        const linkFormula = `=HYPERLINK("${instructionURL}", "${planNameValue}")`;
-        sheet.sheet.getRange(rowNum, col).setFormula(linkFormula);
-      } else if (rowNum && col >= 1) {
-        sheet.sheet.getRange(rowNum, col).setValue(planNameValue);
-      }
-    }
-  }
-}
 
 function generateLabelsAndInstructions() {
   const config = getEnvConfig();
@@ -93,9 +27,12 @@ function generateLabelsAndInstructions() {
     }
 
     // ラベルPDFを生成
-    const finalSkuNums = aggregateSkusForLabels(data);
-    const labelURL = loadLabelPDF(finalSkuNums, accessToken);
-    const instructionURL = makeInstructionSheet(data);
+    const aggregator = new LabelAggregator();
+    const items = aggregator.aggregate(data);
+    const labelURL = loadLabelPDF(items, accessToken);
+
+    const instructionURL = new InstructionSheet().create(data);
+    
     writeToSheet(sheet, data, instructionURL, labelURL);
 
   } catch (error) {
@@ -113,7 +50,7 @@ function writeToSheet(sheet, data, instructionURL, labelURL) {
 
   // プラン別名列に日付と納品分類を書き込む（指示書URLへのリンクとして）
   try {
-    writePlanNameToRows(sheet, data, instructionURL);
+    sheet.writePlanNameToRows(instructionURL);
   } catch (error) {
     console.warn(`プラン別名列への書き込みでエラーが発生しました: ${error.message}`);
   }
