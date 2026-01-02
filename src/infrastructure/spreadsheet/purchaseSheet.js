@@ -131,4 +131,23 @@ class PurchaseSheet extends BaseSheet {
     console.log(`${successCount}行の購入数を${quantity}減らしました`);
   }
 
+  fetchMissingFnskus(accessToken) {
+    const fnskuGetter = new FnskuGetter(accessToken);
+    const fnskuCol = this._getColumnIndexByName("FNSKU") + 1;
+
+    for (const row of this.data) {
+      const fnsku = row.get("FNSKU");
+      const sku = row.get("SKU");
+      const rowNum = row.rowNumber;
+
+      if (!fnsku || fnsku === '') {
+        const fetchedFnsku = fnskuGetter.getFnsku(sku);
+        console.log(`Fetched FNSKU for ${sku}: ${fetchedFnsku}`);
+        if (rowNum && fnskuCol >= 1) {
+          this.writeCell(rowNum, fnskuCol, fetchedFnsku);
+        }
+      }
+    }
+  }
+
 }

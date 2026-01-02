@@ -21,32 +21,6 @@ function formatDateMMDD(date) {
   return `${monthStr}/${dayStr}`;
 }
 
-function fetchMissingFnskus(sheet, data, accessToken) {
-  const fnskuGetter = new FnskuGetter(accessToken);
-  
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    let fnsku = '';
-    let msku = '';
-    try { fnsku = row.get("FNSKU") || ''; } catch (e) {}
-    try { msku = row.get("sku") || ''; } catch (e) {}
-    const rowNum = row.rowNumber;
-    
-    if (!fnsku || fnsku === '') {
-      console.log(`FNSKU is empty for ${msku}, fetching...`);
-      // getFnskuは必ずfnSkuを返すか、エラーをスローする
-      const fetchedFnsku = fnskuGetter.getFnsku(msku);
-      
-        console.log(`Fetched FNSKU for ${msku}: ${fetchedFnsku}`);
-      const col = sheet._getColumnIndexByName("FNSKU") + 1;
-      if (rowNum && col >= 1) {
-          sheet.sheet.getRange(rowNum, col).setValue(fetchedFnsku);
-        // BaseRow(Array)互換なのでインデックス更新もできるが、get()参照のためここでは不要
-      }
-    }
-  }
-}
-
 function aggregateSkusForLabels(data) {
   const skuNums = data.map(row => ({
     msku: row.get("sku"),
@@ -105,9 +79,7 @@ function generateLabelsAndInstructions() {
   const accessToken = getAuthToken();
   const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   const data = sheet.getActiveRowData();
-
-  // FNSKUが空白の場合はSP-APIから取得
-  fetchMissingFnskus(sheet, data, accessToken);
+  sheet.fetchMissingFnskus(accessToken);
   
   try {
     // 検品シート（詳細検品マスタにASINがある場合のみ）
@@ -135,10 +107,9 @@ function generateLabelsAndInstructions() {
 
 
 function writeToSheet(sheet, data, instructionURL, labelURL) {
-  // 依頼日列に本日日付（時刻は00:00:00）を書き込む
   const dateOnly = new Date();
   dateOnly.setHours(0, 0, 0, 0);
-  sheet.writeColumn("依頼日", dateOnly);
+  sheet.writeColumn("梱包依頼日", dateOnly);
 
   // プラン別名列に日付と納品分類を書き込む（指示書URLへのリンクとして）
   try {
