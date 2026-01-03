@@ -13,7 +13,17 @@ class BaseSheet {
     this.startColumn = startColumn;
     
     // 列名->index 解決に使うヘッダー（startRow行のみ）
-    this._headersPrimary = this.sheet.getRange(this.headerRow, startColumn, 1, 100).getValues()[0] || [];
+    const headerRaw = this.sheet.getRange(this.headerRow, startColumn, 1, 100).getValues()[0] || [];
+    this._headersPrimaryRaw = headerRaw;
+    this._headersPrimary = headerRaw.map(h => String(h ?? '').trim());
+    this._headerIndexMap = new Map();
+    for (let i = 0; i < this._headersPrimary.length; i++) {
+      const key = this._headersPrimary[i];
+      if (!key) continue;
+      if (!this._headerIndexMap.has(key)) {
+        this._headerIndexMap.set(key, i);
+      }
+    }
     
     // データ範囲を計算（startRowから最後の行まで、100列分）
     const numRows = Math.max(0, this.lastRow - this.startRow + 1);
@@ -23,11 +33,12 @@ class BaseSheet {
   }
 
   _getColumnIndexByName(columnName) {
-    const idxPrimary = this._headersPrimary.indexOf(columnName);
-    if (idxPrimary !== -1) {
-      return idxPrimary;
+    const key = String(columnName ?? '').trim();
+    const idx = this._headerIndexMap.get(key);
+    if (idx !== undefined) {
+      return idx;
     }
-    throw new Error(`列 "${columnName}" が見つかりません`);
+    throw new Error(`列 "${key}" が見つかりません。ヘッダー: ${JSON.stringify(this._headersPrimary.filter(Boolean))}`);
   }
 
   getActiveRowData(){
@@ -119,5 +130,32 @@ class BaseSheet {
       console.warn(`${rowNum}行目の${columnNum}への書き込みに失敗しました: ${e.message}`);
       throw e;
     }
+  }
+
+  /**
+   * columnName列へ、各行に対して関数で計算した値を書き込む。
+   * - valueFunc(row, index) が返す値:
+   *   - そのまま setValue する値
+   *   - {type:'formula', value:'=...'} なら setFormula
+   *   - null/undefined ならスキップ
+   */
+  writeColumnByFunc(columnName, valueFunc) {
+    const columnNum = this._getColumnIndexByName(columnName) + 1;
+    let successCount = 0;
+
+    for (let i = 0; i < this.data.length; i++) {
+      const row = this.data[i];
+      const rowNum = row && row.rowNumber ? row.rowNumber : null;
+      if (!rowNum) continue;
+
+      const value = valueFunc(row, i);
+      if (value === null || value === undefined) continue;
+
+      this.writeCell(rowNum, columnNum, value);
+      successCount++;
+    }
+
+    console.log(`${columnName}を${successCount}行に書き込みました(by func)`);
+    return successCount;
   }
 }

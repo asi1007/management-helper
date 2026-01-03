@@ -7,31 +7,48 @@ function loadLabelPDF(labelItems, accessToken) {
   return result.url;
 }
 
+function createInspectionSheetAndWriteLink(sheet, data) {
+  // 検品シート（詳細検品マスタにASINがある場合のみ）
+  try {
+    const inspectionUrl = createInspectionSheetFromPurchaseRowsIfNeeded(data);
+    if (inspectionUrl) {
+      console.log(`検品シートを作成しました: ${inspectionUrl}`);
+      // 仕入管理シート C2 に検品シートURLを記載
+      sheet.writeCell(2, 3, { type: 'formula', value: `=HYPERLINK("${inspectionUrl}", "検品シート")` });
+    }
+    return inspectionUrl || null;
+  } catch (e) {
+    console.warn(`検品シート作成でエラー: ${e.message}`);
+    return null;
+  }
+}
+
+function createLabelPDF(data, accessToken) {
+  const aggregator = new LabelAggregator();
+  const items = aggregator.aggregate(data); // itemsが空ならaggregate内で例外
+  const labelURL = loadLabelPDF(items, accessToken);
+  return labelURL;
+}
+
+function createInstructionSheet(data) {
+  return new InstructionSheet().create(data);
+}
+
 
 function generateLabelsAndInstructions() {
   const config = getEnvConfig();
   const accessToken = getAuthToken();
   const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   const data = sheet.getActiveRowData();
+  // 指示書作成前にSKU空白を補完（ASIN -> SKU）
+  sheet.fillMissingSkusFromAsins(accessToken, data);
+  // FNSKUも補完（SKU -> FNSKU）
   sheet.fetchMissingFnskus(accessToken);
   
   try {
-    // 検品シート（詳細検品マスタにASINがある場合のみ）
-    try {
-      const inspectionUrl = createInspectionSheetFromPurchaseRowsIfNeeded(data);
-      if (inspectionUrl) {
-        console.log(`検品シートを作成しました: ${inspectionUrl}`);
-      }
-    } catch (e) {
-      console.warn(`検品シート作成でエラー: ${e.message}`);
-    }
-
-    // ラベルPDFを生成
-    const aggregator = new LabelAggregator();
-    const items = aggregator.aggregate(data);
-    const labelURL = loadLabelPDF(items, accessToken);
-
-    const instructionURL = new InstructionSheet().create(data);
+    createInspectionSheetAndWriteLink(sheet, data);
+    const labelURL = createLabelPDF(data, accessToken);
+    const instructionURL = createInstructionSheet(data);
     
     writeToSheet(sheet, data, instructionURL, labelURL);
 

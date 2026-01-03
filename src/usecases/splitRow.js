@@ -42,7 +42,7 @@ function splitRow() {
   }
 
   // 購入数（数量）の列インデックスを取得
-  const quantityColumnIndex = purchaseSheet._getColumnIndexByName('数量');
+  const quantityColumnIndex = purchaseSheet._getColumnIndexByName('購入数');
   const originalRowNumber = purchaseSheet.rowNumbers[0];
   const originalQuantity = Number(purchaseSheet.data[0][quantityColumnIndex]);
 

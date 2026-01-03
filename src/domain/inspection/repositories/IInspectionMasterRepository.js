@@ -2,7 +2,7 @@
 
 /**
  * @interface
- * findByAsins(asins: string[]) => Map<string, InspectionMasterItem>
+ * load() => InspectionMasterCatalog
  */
 class IInspectionMasterRepository {}
 

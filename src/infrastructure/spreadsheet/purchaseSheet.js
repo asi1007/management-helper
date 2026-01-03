@@ -153,6 +153,86 @@ class PurchaseSheet extends BaseSheet {
     }
   }
 
+  /**
+   * 指示書作成前の補完: SKUが空の場合、ASINから出品レポートでSKUを解決して書き戻す
+   * @param {string} accessToken
+   * @param {BaseRow[]|null} targetRows 省略時はthis.data全体が対象。指定時はその行だけを補完する（参照はシート全体）。
+   */
+  fillMissingSkusFromAsins(accessToken, targetRows = null) {
+    const resolver = new MerchantListingsSkuResolver(accessToken);
+    const skuColIndex = this._getColumnIndexByName("SKU");
+    const skuCol = skuColIndex + 1;
+
+    // まずはシート内の既存行から ASIN -> SKU を作る（同一ASINがあればそれを優先で使う）
+    const asinToSkuLocal = new Map();
+    for (const row of this.data) {
+      const sku = String(row.get("SKU") || '').trim();
+      const asin = String(row.get("ASIN") || '').trim();
+      if (asin && sku && !asinToSkuLocal.has(asin)) {
+        asinToSkuLocal.set(asin, sku);
+      }
+    }
+
+    const targetAsins = [];
+    const targets = []; // { row, rowNum, asin }
+
+    const rowsToProcess = Array.isArray(targetRows) ? targetRows : this.data;
+    for (const row of rowsToProcess) {
+      const rowNum = row.rowNumber;
+      const sku = String(row.get("SKU") || '').trim();
+      const asin = String(row.get("ASIN") || '').trim();
+      if (!sku && asin) {
+        targetAsins.push(asin);
+        targets.push({ row, rowNum, asin });
+      }
+    }
+
+    if (targetAsins.length === 0) {
+      console.log('[SKU補完] SKU空白なし -> スキップ');
+      return;
+    }
+
+    // 1) 仕入管理シート内の既存行のSKUを流用
+    let filledByLocal = 0;
+    const stillMissingAsins = [];
+    for (const t of targets) {
+      const resolvedLocal = asinToSkuLocal.get(t.asin);
+      if (!resolvedLocal) {
+        stillMissingAsins.push(t.asin);
+        continue;
+      }
+      if (t.rowNum && skuCol >= 1) {
+        this.writeCell(t.rowNum, skuCol, resolvedLocal);
+        t.row[skuColIndex] = resolvedLocal; // in-memoryも更新
+        filledByLocal++;
+      }
+    }
+
+    // 2) まだ無い分だけ Reports API で解決
+    const uniqueMissing = Array.from(new Set(stillMissingAsins));
+    if (uniqueMissing.length === 0) {
+      console.log(`[SKU補完] ローカル流用で全件補完: ${filledByLocal}/${targets.length}`);
+      return;
+    }
+
+    console.log(`[SKU補完] ローカル流用=${filledByLocal}/${targets.length} -> Reports APIで解決開始 (ASIN数=${uniqueMissing.length})`);
+    const asinToSkuRemote = resolver.resolveSkusByAsins(uniqueMissing);
+
+    let filledByRemote = 0;
+    for (const t of targets) {
+      const currentSku = String(t.row.get("SKU") || '').trim();
+      if (currentSku) continue;
+      const resolved = asinToSkuRemote.get(t.asin);
+      if (!resolved) continue;
+      if (t.rowNum && skuCol >= 1) {
+        this.writeCell(t.rowNum, skuCol, resolved);
+        t.row[skuColIndex] = resolved;
+        filledByRemote++;
+      }
+    }
+    console.log(`[SKU補完] 書き込み完了: local=${filledByLocal}, remote=${filledByRemote}, total=${filledByLocal + filledByRemote}/${targets.length}`);
+  }
+
   writePlanNameToRows(instructionURL) {
     const dateStr = this._formatDateMMDD(new Date());
 

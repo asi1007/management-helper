@@ -1,5 +1,11 @@
 /* exported InstructionSheet */
 
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message || 'Assertion failed');
+  }
+}
+
 class InstructionSheet {
   constructor() {
     this.TEMPLATE_ID = '1YDBbEgxTnRZRqKi5UUsQAZfCgakdzVKNJtX6cPBZARA';
@@ -9,9 +15,7 @@ class InstructionSheet {
   }
 
   create(data) {
-    if (!Array.isArray(data) || data.length === 0) {
-      throw new Error('指示書作成対象の行データが空、または不正です');
-    }
+    assert(Array.isArray(data) && data.length > 0, '指示書作成対象の行データが空、または不正です');
 
     const rows = this._extractRows(data);
     const planName = this._generatePlanName(data);
@@ -25,7 +29,7 @@ class InstructionSheet {
     return data.map(row => [
       this._getRowValue(row, ["FNSKU"]),
       this._getRowValue(row, ["ASIN"]),
-      this._getRowValue(row, ["数量"]),
+      this._getRowValue(row, ["購入数"]),
       this._getRowValue(row, ["備考"]),
       this._getRowValue(row, ["注文番号"])
     ]);
