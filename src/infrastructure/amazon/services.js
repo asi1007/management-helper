@@ -82,6 +82,10 @@ class InboundPlanCreator{
       'fee',
       'totalFees',
       'charges',
+      'transportationMode',
+      'shippingMode',
+      'shippingMethod',
+      'mode',
       'shipmentIds',
       'shipments',
       'destinationFulfillmentCenters',
@@ -95,6 +99,25 @@ class InboundPlanCreator{
     ];
     for (const k of maybeKeys) {
       if (o[k] !== undefined) summary[k] = o[k];
+    }
+
+    // フィールド名が揺れても拾えるように、mode/transport/shipping/pallet を含むプリミティブ値を追加
+    try {
+      const extraKeys = Object.keys(o).filter(k => /mode|transport|shipping|pallet/i.test(k));
+      let added = 0;
+      for (const k of extraKeys) {
+        if (summary[k] !== undefined) continue;
+        const v = o[k];
+        const t = typeof v;
+        if (v === null || v === undefined) continue;
+        if (t === 'string' || t === 'number' || t === 'boolean') {
+          summary[k] = v;
+          added++;
+        }
+        if (added >= 15) break;
+      }
+    } catch (e) {
+      // ignore
     }
     return summary;
   }

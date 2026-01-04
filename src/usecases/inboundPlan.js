@@ -78,13 +78,30 @@ function _showPlacementOptionsDialog_(inboundPlanId, placementOptions) {
       if (!options.length) {
         list.innerHTML = '<div>有効なPlacement Optionsがありません</div>';
       } else {
+        function pickModeLabel(o) {
+          try {
+            const candidates = [
+              o && o.transportationMode,
+              o && o.shippingMode,
+              o && o.shippingMethod,
+              o && o.mode
+            ].filter(Boolean);
+            if (candidates.length > 0) return String(candidates[0]);
+            const key = Object.keys(o || {}).find(k => /mode|transport|shipping|pallet/i.test(k));
+            if (key) return String(o[key]);
+          } catch (e) {}
+          return '';
+        }
+
         list.innerHTML = options.map((o, i) => {
           const id = o.placementOptionId || o.placementOptionID || o.id || '(no placementOptionId)';
+          const mode = pickModeLabel(o);
+          const modeTag = mode ? \`<span style="display:inline-block;margin-left:8px;padding:2px 6px;border-radius:10px;background:\${/pallet/i.test(mode)?'#ffe3e3':'#e7f3ff'};border:1px solid #ccc;">mode: \${mode}</span>\` : '';
           const summary = JSON.stringify(o, null, 2);
           return \`
             <label style="display:block; border:1px solid #ddd; padding:8px; margin:8px 0;">
               <input type="radio" name="po" value="\${id}" \${i===0?'checked':''}/>
-              <div><b>placementOptionId:</b> <code>\${id}</code></div>
+              <div><b>placementOptionId:</b> <code>\${id}</code>\${modeTag}</div>
               <details style="margin-top:6px;">
                 <summary>詳細(JSON)</summary>
                 <pre style="white-space:pre-wrap;">\${summary}</pre>
