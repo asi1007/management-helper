@@ -65,6 +65,83 @@ class InboundPlanCreator{
     };
   }
 
+  /**
+   * placementOptions のログ表示用に、できるだけ壊れない概要を作る
+   * @param {any} option
+   * @returns {Object}
+   */
+  _summarizePlacementOption(option) {
+    const o = option || {};
+    const summary = {
+      placementOptionId: o.placementOptionId || o.placementOptionID || o.id || null,
+    };
+
+    // よくありそうなフィールドを、あれば載せる（無ければ無視）
+    const maybeKeys = [
+      'fees',
+      'fee',
+      'totalFees',
+      'charges',
+      'shipmentIds',
+      'shipments',
+      'destinationFulfillmentCenters',
+      'assignedShipments',
+      'placementFee',
+      'isRecommended',
+      'recommended',
+      'splitShipments',
+      'distribution',
+      'inboundPlanId',
+    ];
+    for (const k of maybeKeys) {
+      if (o[k] !== undefined) summary[k] = o[k];
+    }
+    return summary;
+  }
+
+  /**
+   * placementOptions の候補概要をログに出す（毎回）
+   * @param {string} inboundPlanId
+   * @param {any[]} options
+   */
+  _logPlacementOptionsOverview(inboundPlanId, options) {
+    const list = Array.isArray(options) ? options : [];
+    console.log(`[PlacementOptions] inboundPlanId=${inboundPlanId}, count=${list.length}`);
+    for (let i = 0; i < list.length; i++) {
+      const summary = this._summarizePlacementOption(list[i]);
+      console.log(`[PlacementOptions] #${i + 1}/${list.length}: ${JSON.stringify(summary)}`);
+    }
+  }
+
+  /**
+   * Placement Options を生成→完了待ち→一覧取得し、毎回ログに概要を出す
+   * @param {string} inboundPlanId
+   * @returns {any[]} placementOptions
+   */
+  getPlacementOptions(inboundPlanId) {
+    const generateOpId = this._generatePlacementOptions(inboundPlanId);
+    this._pollOperation(generateOpId, "Placement Options Generation");
+    const options = this._listPlacementOptions(inboundPlanId);
+    this._logPlacementOptionsOverview(inboundPlanId, options);
+    return options;
+  }
+
+  /**
+   * Placement Option を確定し、選択結果（概要＋shipmentIds）を毎回ログに出す
+   * @param {string} inboundPlanId
+   * @param {string} placementOptionId
+   * @returns {any[]} shipments
+   */
+  confirmPlacementOption(inboundPlanId, placementOptionId) {
+    console.log(`[PlacementOptions] Selected placementOptionId=${placementOptionId} (inboundPlanId=${inboundPlanId})`);
+    const confirmOpId = this._confirmPlacementOption(inboundPlanId, placementOptionId);
+    this._pollOperation(confirmOpId, "Placement Option Confirmation");
+    const shipments = this._listShipments(inboundPlanId);
+    const shipmentIds = (shipments || []).map(s => s.shipmentId).filter(Boolean);
+    console.log(`[PlacementOptions] Confirmed placementOptionId=${placementOptionId} -> shipments=${JSON.stringify(shipmentIds)}`);
+    return shipments;
+  }
+
   buildSourceAddress(){
     const filtered = {};
     Object.keys(SHIP_FROM_ADDRESS).forEach(key => {
