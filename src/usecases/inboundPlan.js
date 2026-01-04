@@ -45,6 +45,9 @@ function createInboundPlanFromActiveRowsWithPlacementSelection() {
   const planResult = creator.createPlan(items);
   sheet.writePlanResult(planResult);
 
+  // 1.5 プラン作成完了待機（placementOptions生成の前に確実に完了させる）
+  creator.waitInboundPlanCreation(planResult.operationId);
+
   const inboundPlanId = planResult.inboundPlanId;
   const placementOptions = creator.getPlacementOptions(inboundPlanId); // ここで候補概要ログが出る
   _showPlacementOptionsDialog_(inboundPlanId, placementOptions);

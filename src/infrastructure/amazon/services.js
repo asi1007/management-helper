@@ -142,6 +142,17 @@ class InboundPlanCreator{
     return shipments;
   }
 
+  /**
+   * Inbound Plan 作成の operationId を待機する（= 1.5）
+   * @param {string} operationId
+   */
+  waitInboundPlanCreation(operationId) {
+    if (!operationId) {
+      throw new Error('operationId が空のため Inbound Plan Creation を待機できません');
+    }
+    this._pollOperation(operationId, "Inbound Plan Creation");
+  }
+
   buildSourceAddress(){
     const filtered = {};
     Object.keys(SHIP_FROM_ADDRESS).forEach(key => {
