@@ -340,32 +340,25 @@ class InboundPlanCreator{
     const createOperationId = planResult.operationId;
     console.log(`Inbound Plan Created: ${inboundPlanId} (Operation: ${createOperationId})`);
 
+    // 1.5〜5 は「コメントアウト部分を復活」したもの。
+    // ただし、UI(フォーム)で選ぶ場合はこの関数内で入力待ちできないため、
+    // ここでは「候補生成＆一覧ログ」までをデフォルトで実行する。
+    //
+    // 必要なら呼び出し側で `confirmPlacementOption(inboundPlanId, placementOptionId)` を呼んで確定する。
+    // （UI選択フローは usecases/inboundPlan.js の createInboundPlanFromActiveRowsWithPlacementSelection を利用）
+
     // 1.5 プラン作成完了待機
-    // this._pollOperation(createOperationId, "Inbound Plan Creation");
+    this.waitInboundPlanCreation(createOperationId);
 
-    // 2. Placement Options 生成
-    // const generateOpId = this._generatePlacementOptions(inboundPlanId);
-    // this._pollOperation(generateOpId, "Placement Options Generation");
-
-    // 3. オプション取得と選択
-    // const options = this._listPlacementOptions(inboundPlanId);
-    // // 最初のオプションを選択（手数料なしや分割なしなどのロジックがあればここに追加）
-    // const selectedOption = options[0];
-    // console.log(`Selected Placement Option: ${selectedOption.placementOptionId}`);
-
-    // 4. オプション確定
-    // const confirmOpId = this._confirmPlacementOption(inboundPlanId, selectedOption.placementOptionId);
-    // this._pollOperation(confirmOpId, "Placement Option Confirmation");
-
-    // 5. Shipment情報取得
-    // const shipments = this._listShipments(inboundPlanId);
-    // console.log(`Shipments Created: ${shipments.map(s => s.shipmentId).join(', ')}`);
+    // 2-3 Placement Options 生成→一覧取得（毎回候補概要ログ）
+    const placementOptions = this.getPlacementOptions(inboundPlanId);
 
     return {
       inboundPlanId,
       operationId: planResult.operationId,
       link: `${this.PLAN_LINK_BASE}/fba/sendtoamazon/pack_later_confirm_shipments?wf=${inboundPlanId}`,
-      shipmentIds: [] // shipments.map(s => s.shipmentId)
+      shipmentIds: [],
+      placementOptions
     };
   }
 }
