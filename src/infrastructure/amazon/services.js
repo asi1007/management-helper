@@ -119,7 +119,31 @@ class InboundPlanCreator{
     } catch (e) {
       // ignore
     }
+
+    // パレット/LTL系の判定（ワークフロー分岐に関係するため、常にログに含める）
+    summary.isPalletLike = this._isPalletLikePlacementOption(o);
     return summary;
+  }
+
+  /**
+   * placement option がパレット/LTL系ワークフローっぽいかを雑に判定する
+   * @param {any} option
+   * @returns {boolean}
+   */
+  _isPalletLikePlacementOption(option) {
+    const o = option || {};
+    const values = [];
+    try {
+      for (const k of Object.keys(o)) {
+        const v = o[k];
+        if (v === null || v === undefined) continue;
+        if (typeof v === 'string') values.push(v);
+        if (typeof v === 'number') values.push(String(v));
+      }
+    } catch (e) {}
+    const joined = values.join(' ').toLowerCase();
+    // 代表例: pallet / ltl / freight など
+    return /pallet|ltl|freight|truckload|truck/i.test(joined);
   }
 
   /**
@@ -129,7 +153,11 @@ class InboundPlanCreator{
    */
   _logPlacementOptionsOverview(inboundPlanId, options) {
     const list = Array.isArray(options) ? options : [];
-    console.log(`[PlacementOptions] inboundPlanId=${inboundPlanId}, count=${list.length}`);
+    let palletCount = 0;
+    for (const o of list) {
+      if (this._isPalletLikePlacementOption(o)) palletCount++;
+    }
+    console.log(`[PlacementOptions] inboundPlanId=${inboundPlanId}, count=${list.length}, palletLike=${palletCount}, nonPallet=${list.length - palletCount}`);
     for (let i = 0; i < list.length; i++) {
       const summary = this._summarizePlacementOption(list[i]);
       console.log(`[PlacementOptions] #${i + 1}/${list.length}: ${JSON.stringify(summary)}`);

@@ -50,6 +50,16 @@ function createInboundPlanFromActiveRowsWithPlacementSelection() {
 
   const inboundPlanId = planResult.inboundPlanId;
   const placementOptions = creator.getPlacementOptions(inboundPlanId); // ここで候補概要ログが出る
+  // パレット/非パレットの誤選択を防ぐため、候補をキャッシュしてサーバ側でも判定できるようにする
+  try {
+    CacheService.getScriptCache().put(
+      `placementOptions:${inboundPlanId}`,
+      JSON.stringify(placementOptions || []),
+      60 * 60 // 1時間
+    );
+  } catch (e) {
+    // cache失敗しても致命ではない
+  }
   _showPlacementOptionsDialog_(inboundPlanId, placementOptions);
 
   console.log(`Inbound plan created (awaiting placement selection): inboundPlanId=${planResult.inboundPlanId}, operationId=${planResult.operationId}, link=${planResult.link}`);
@@ -62,6 +72,20 @@ function _showPlacementOptionsDialog_(inboundPlanId, placementOptions) {
     <div style="font-family: Arial, sans-serif;">
       <h3>Placement Optionを選択</h3>
       <div style="margin:8px 0;">InboundPlanId: <code>${inboundPlanId}</code></div>
+      <div style="margin:8px 0;">
+        <label style="display:inline-block;margin-right:12px;">
+          表示:
+          <select id="filter">
+            <option value="nonpallet" selected>パレット以外のみ</option>
+            <option value="all">すべて</option>
+            <option value="pallet">パレットのみ</option>
+          </select>
+        </label>
+        <label style="display:inline-block;">
+          <input type="checkbox" id="allowPallet"/>
+          パレット候補でも確定を許可する（非推奨）
+        </label>
+      </div>
       <div id="list"></div>
       <div style="margin-top:12px;">
         <button onclick="submitChoice()">確定</button>
@@ -78,6 +102,14 @@ function _showPlacementOptionsDialog_(inboundPlanId, placementOptions) {
       if (!options.length) {
         list.innerHTML = '<div>有効なPlacement Optionsがありません</div>';
       } else {
+        function isPalletLike(o) {
+          try {
+            const vals = Object.keys(o || {}).map(k => o[k]).filter(v => typeof v === 'string').join(' ').toLowerCase();
+            return /pallet|ltl|freight|truckload|truck/i.test(vals);
+          } catch (e) {}
+          return false;
+        }
+
         function pickModeLabel(o) {
           try {
             const candidates = [
@@ -93,22 +125,42 @@ function _showPlacementOptionsDialog_(inboundPlanId, placementOptions) {
           return '';
         }
 
-        list.innerHTML = options.map((o, i) => {
-          const id = o.placementOptionId || o.placementOptionID || o.id || '(no placementOptionId)';
-          const mode = pickModeLabel(o);
-          const modeTag = mode ? \`<span style="display:inline-block;margin-left:8px;padding:2px 6px;border-radius:10px;background:\${/pallet/i.test(mode)?'#ffe3e3':'#e7f3ff'};border:1px solid #ccc;">mode: \${mode}</span>\` : '';
-          const summary = JSON.stringify(o, null, 2);
-          return \`
-            <label style="display:block; border:1px solid #ddd; padding:8px; margin:8px 0;">
-              <input type="radio" name="po" value="\${id}" \${i===0?'checked':''}/>
-              <div><b>placementOptionId:</b> <code>\${id}</code>\${modeTag}</div>
-              <details style="margin-top:6px;">
-                <summary>詳細(JSON)</summary>
-                <pre style="white-space:pre-wrap;">\${summary}</pre>
-              </details>
-            </label>
-          \`;
-        }).join('');
+        function render() {
+          const filter = document.getElementById('filter').value;
+          const filtered = options.filter(o => {
+            const pallet = isPalletLike(o);
+            if (filter === 'pallet') return pallet;
+            if (filter === 'nonpallet') return !pallet;
+            return true;
+          });
+
+          if (!filtered.length) {
+            list.innerHTML = '<div>表示条件に合うPlacement Optionsがありません</div>';
+            return;
+          }
+
+          list.innerHTML = filtered.map((o, i) => {
+            const id = o.placementOptionId || o.placementOptionID || o.id || '(no placementOptionId)';
+            const mode = pickModeLabel(o);
+            const pallet = isPalletLike(o);
+            const bg = pallet ? '#ffe3e3' : '#e7f3ff';
+            const modeTag = (mode || pallet) ? \`<span style="display:inline-block;margin-left:8px;padding:2px 6px;border-radius:10px;background:\${bg};border:1px solid #ccc;">\${mode ? \`mode: \${mode}\` : (pallet ? 'pallet-like' : '')}</span>\` : '';
+            const summary = JSON.stringify(o, null, 2);
+            return \`
+              <label style="display:block; border:1px solid #ddd; padding:8px; margin:8px 0;">
+                <input type="radio" name="po" value="\${id}" \${i===0?'checked':''}/>
+                <div><b>placementOptionId:</b> <code>\${id}</code>\${modeTag}</div>
+                <details style="margin-top:6px;">
+                  <summary>詳細(JSON)</summary>
+                  <pre style="white-space:pre-wrap;">\${summary}</pre>
+                </details>
+              </label>
+            \`;
+          }).join('');
+        }
+
+        document.getElementById('filter').addEventListener('change', render);
+        render();
       }
 
       function submitChoice() {
@@ -125,7 +177,7 @@ function _showPlacementOptionsDialog_(inboundPlanId, placementOptions) {
             document.getElementById('status').textContent =
               'エラー\\n' + (err && err.message ? err.message : String(err));
           })
-          .confirmPlacementOptionFromDialog(inboundPlanId, picked.value);
+          .confirmPlacementOptionFromDialog(inboundPlanId, picked.value, document.getElementById('allowPallet').checked);
       }
     </script>
   `).setWidth(820).setHeight(700);
@@ -133,9 +185,32 @@ function _showPlacementOptionsDialog_(inboundPlanId, placementOptions) {
   SpreadsheetApp.getUi().showModalDialog(html, 'Placement Option選択');
 }
 
-function confirmPlacementOptionFromDialog(inboundPlanId, placementOptionId) {
+function confirmPlacementOptionFromDialog(inboundPlanId, placementOptionId, allowPallet) {
   const accessToken = getAuthToken();
   const creator = new InboundPlanCreator(accessToken);
+  if (!allowPallet) {
+    // サーバ側でもパレット候補の確定をブロック（ワークフロー誤突入を防ぐ）
+    try {
+      const cache = CacheService.getScriptCache();
+      const raw = cache.get(`placementOptions:${inboundPlanId}`);
+      if (raw) {
+        const options = JSON.parse(raw);
+        const selected = (options || []).find(o => {
+          const id = o.placementOptionId || o.placementOptionID || o.id || null;
+          return String(id) === String(placementOptionId);
+        });
+        if (selected) {
+          const text = Object.keys(selected || {}).map(k => selected[k]).filter(v => typeof v === 'string').join(' ').toLowerCase();
+          if (/pallet|ltl|freight|truckload|truck/i.test(text)) {
+            throw new Error(`選択したPlacement Optionはパレット輸送(LTL)系の可能性があります。パレットではない運用の場合、別の候補を選んでください (placementOptionId=${placementOptionId})`);
+          }
+        }
+      }
+    } catch (e) {
+      // ここで投げた Error はそのままユーザーに表示される
+      if (e && e.message && /パレット輸送/.test(e.message)) throw e;
+    }
+  }
   const shipments = creator.confirmPlacementOption(inboundPlanId, placementOptionId); // ここで選択結果ログが出る
   return {
     inboundPlanId,
