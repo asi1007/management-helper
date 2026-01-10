@@ -421,6 +421,28 @@ class FnskuGetter{
   }
 
   getFnsku(msku) {
+    // #region agent log
+    const _dbgSku = (s) => {
+      const raw = String(s ?? '');
+      const trim = raw.trim();
+      const chars = raw.slice(0, 50).split('').map(c => c.charCodeAt(0));
+      return {
+        raw,
+        trim,
+        rawLen: raw.length,
+        trimLen: trim.length,
+        rawHasWhitespace: /\s/.test(raw),
+        rawLeadingOrTrailingWhitespace: /^\s|\s$/.test(raw),
+        rawCharCodesHead: chars
+      };
+    };
+    try {
+      console.log(`[DBG][FNSKU][getFnsku] msku=${JSON.stringify(_dbgSku(msku))}`);
+    } catch (e) {}
+    // #region agent log
+    try{UrlFetchApp.fetch('http://127.0.0.1:7243/ingest/24045cd5-2584-4703-ab97-0442e02ed8a6',{method:'post',contentType:'application/json',payload:JSON.stringify({location:'services.js:FnskuGetter.getFnsku:entry',message:'getFnsku called',data:{mskuType:typeof msku,mskuRaw:String(msku||''),mskuTrim:String(msku||'').trim(),hasWhitespace:/\\s/.test(String(msku||'')),hasLeadingOrTrailingWhitespace:/^\\s|\\s$/.test(String(msku||''))},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A'})});}catch(e){}
+    // #endregion
+
     const options = {
       method: 'get',
       muteHttpExceptions: true,
@@ -430,11 +452,47 @@ class FnskuGetter{
       }
     };
 
-    const url = `${this.LISTINGS_API_URL}${msku}?marketplaceIds=A1VC38T7YXB528`;
-    const response = UrlFetchApp.fetch(url, options);
+    const rawMsku = String(msku || '');
+    const trimmedMsku = rawMsku.trim();
+    if (!trimmedMsku) {
+      console.warn('[FNSKU補完] getFnskuに空のSKUが渡されました');
+      throw new Error('SKUが空のためFNSKU取得できません');
+    }
+    const urlRaw = `${this.LISTINGS_API_URL}${rawMsku}?marketplaceIds=A1VC38T7YXB528`;
+    const urlTrim = `${this.LISTINGS_API_URL}${trimmedMsku}?marketplaceIds=A1VC38T7YXB528`;
+    const urlEncoded = `${this.LISTINGS_API_URL}${encodeURIComponent(trimmedMsku)}?marketplaceIds=A1VC38T7YXB528`;
+
+    // #region agent log
+    try {
+      console.log(`[DBG][FNSKU][getFnsku] urlRawHasWhitespace=${/\\s/.test(urlRaw)} urlTrimHasWhitespace=${/\\s/.test(urlTrim)} urlEncodedHasWhitespace=${/\\s/.test(urlEncoded)} urlRawPreview=${JSON.stringify(urlRaw.slice(0,180))}`);
+    } catch (e) {}
+    // #endregion
+
+    // #region agent log
+    try{UrlFetchApp.fetch('http://127.0.0.1:7243/ingest/24045cd5-2584-4703-ab97-0442e02ed8a6',{method:'post',contentType:'application/json',payload:JSON.stringify({location:'services.js:FnskuGetter.getFnsku:url',message:'url candidates',data:{urlRawHasWhitespace:/\\s/.test(urlRaw),urlTrimHasWhitespace:/\\s/.test(urlTrim),urlEncodedHasWhitespace:/\\s/.test(urlEncoded),urlRawPreview:urlRaw.slice(0,140),urlTrimPreview:urlTrim.slice(0,140),urlEncodedPreview:urlEncoded.slice(0,140)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})});}catch(e){}
+    // #endregion
+
+    // NOTE: SKUに空白や記号が入っても壊れないように encode + trim を使う
+    const url = urlEncoded;
+    let response;
+    try {
+      response = UrlFetchApp.fetch(url, options);
+    } catch (e) {
+      // #region agent log
+      try {
+        console.log(`[DBG][FNSKU][getFnsku] UrlFetchApp.fetch threw: name=${String(e && e.name || '')} message=${String(e && e.message || '')} url=${JSON.stringify(String(url||'').slice(0,220))}`);
+      } catch (ee) {}
+      try{UrlFetchApp.fetch('http://127.0.0.1:7243/ingest/24045cd5-2584-4703-ab97-0442e02ed8a6',{method:'post',contentType:'application/json',payload:JSON.stringify({location:'services.js:FnskuGetter.getFnsku:exception',message:'UrlFetchApp.fetch threw',data:{errorName:String(e && e.name || ''),errorMessage:String(e && e.message || ''),urlHasWhitespace:/\\s/.test(String(url||'')),urlPreview:String(url||'').slice(0,180)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E'})});}catch(ee){}
+      // #endregion
+      throw e;
+    }
 
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
+    // #region agent log
+    try{UrlFetchApp.fetch('http://127.0.0.1:7243/ingest/24045cd5-2584-4703-ab97-0442e02ed8a6',{method:'post',contentType:'application/json',payload:JSON.stringify({location:'services.js:FnskuGetter.getFnsku:response',message:'getFnsku response',data:{responseCode:responseCode,responseTextHead:String(responseText||'').slice(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D'})});}catch(e){}
+    // #endregion
+
     if (responseCode !== 200) {
       throw new Error(`FNSKU取得に失敗しました (SKU: ${msku}, status: ${responseCode}): ${responseText}`);
     }
@@ -552,12 +610,25 @@ class MerchantListingsSkuResolver {
     const res = UrlFetchApp.fetch(json.url, { method: 'get', muteHttpExceptions: true });
     const blob = res.getBlob();
     const algo = json.compressionAlgorithm || '';
+
+    // bytes（圧縮があれば展開）
+    let bytes = blob.getBytes();
     if (algo === 'GZIP') {
       // GASはUtilities.ungzipでBlobを展開できる
-      const bytes = Utilities.ungzip(blob.getBytes());
-      return Utilities.newBlob(bytes).getDataAsString();
+      bytes = Utilities.ungzip(bytes);
     }
-    return blob.getDataAsString();
+
+    // まずUTF-8で試し、ヘッダーが文字化けしてそうならShift_JISで読み直す
+    const utf8 = Utilities.newBlob(bytes).getDataAsString('UTF-8');
+    const sjis = Utilities.newBlob(bytes).getDataAsString('Shift_JIS');
+    const looksValid = (text) => {
+      const firstLine = String(text || '').split(/\r?\n/)[0] || '';
+      // 英語/日本語どちらのヘッダーでも「それっぽい」語が含まれるかで判定
+      return /seller-sku|item-sku|asin1|asin|出品者SKU|商品ID|商品IDタイプ/.test(firstLine);
+    };
+    const chosen = looksValid(utf8) ? utf8 : (looksValid(sjis) ? sjis : utf8);
+    console.log(`[SKU補完] Report decoded as: ${chosen === utf8 ? 'UTF-8' : 'Shift_JIS'}`);
+    return chosen;
   }
 
   _extractAsinSkuMap(tsvText, targetAsins) {
@@ -568,16 +639,43 @@ class MerchantListingsSkuResolver {
     const lines = String(tsvText).split(/\r?\n/).filter(l => l !== '');
     if (lines.length === 0) return result;
 
-    const header = lines[0].split('\t').map(h => String(h || '').trim());
-    const skuIdx = header.indexOf('seller-sku') !== -1 ? header.indexOf('seller-sku') : header.indexOf('item-sku');
-    const asinIdx = header.indexOf('asin1') !== -1 ? header.indexOf('asin1') : header.indexOf('asin');
-    if (skuIdx === -1 || asinIdx === -1) {
+    const header = lines[0]
+      .split('\t')
+      .map(h => String(h || '').replace(/^\uFEFF/, '').trim());
+
+    const indexOfAny = (candidates) => {
+      for (const key of candidates) {
+        const idx = header.indexOf(key);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    // 英語ヘッダー（公式例）: seller-sku, asin1 / asin
+    // 日本語ヘッダー（文字コード/設定で変わる）: 出品者SKU, 商品ID, 商品IDタイプ
+    const skuIdx = indexOfAny(['seller-sku', 'item-sku', '出品者SKU']);
+    const asinIdx = indexOfAny(['asin1', 'asin', 'ASIN1', 'ASIN']);
+    const productIdIdx = indexOfAny(['product-id', 'item-id', '商品ID']);
+    const productIdTypeIdx = indexOfAny(['product-id-type', 'item-id-type', '商品IDタイプ']);
+
+    if (skuIdx === -1 || (asinIdx === -1 && productIdIdx === -1)) {
       throw new Error(`出品レポートのヘッダー解析に失敗しました。header=${JSON.stringify(header)}`);
     }
 
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split('\t');
-      const asin = String(cols[asinIdx] || '').trim();
+
+      let asin = '';
+      if (asinIdx !== -1) {
+        asin = String(cols[asinIdx] || '').trim();
+      } else {
+        // 商品IDタイプがASINの行だけ商品IDをASIN扱い
+        const idType = String(cols[productIdTypeIdx] || '').trim().toUpperCase();
+        const idVal = String(cols[productIdIdx] || '').trim();
+        if (idType === 'ASIN' || (/^[A-Z0-9]{10}$/.test(idVal) && !idType)) {
+          asin = idVal;
+        }
+      }
       if (!asin || !want.has(asin)) continue;
       const sku = String(cols[skuIdx] || '').trim();
       if (!sku) continue;

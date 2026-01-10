@@ -131,18 +131,43 @@ class PurchaseSheet extends BaseSheet {
     console.log(`${successCount}行の購入数を${quantity}減らしました`);
   }
 
-  fetchMissingFnskus(accessToken) {
+  /**
+   * FNSKU補完（SKU -> FNSKU）
+   * @param {string} accessToken
+   * @param {BaseRow[]|null} targetRows 省略時はthis.data全体。指定時はその行だけ補完する。
+   */
+  fetchMissingFnskus(accessToken, targetRows = null) {
     const fnskuGetter = new FnskuGetter(accessToken);
     const fnskuColIndex = this._getColumnIndexByName("FNSKU");
     const fnskuCol = fnskuColIndex + 1;
 
-    for (const row of this.data) {
+    const strict = Array.isArray(targetRows);
+    const rowsToProcess = strict ? targetRows : this.data;
+
+    for (const row of rowsToProcess) {
       const fnsku = row.get("FNSKU");
       const sku = row.get("SKU");
       const rowNum = row.rowNumber;
 
       if (!fnsku || fnsku === '') {
-        const fetchedFnsku = fnskuGetter.getFnsku(sku);
+        // #region agent log
+        try{UrlFetchApp.fetch('http://127.0.0.1:7243/ingest/24045cd5-2584-4703-ab97-0442e02ed8a6',{method:'post',contentType:'application/json',payload:JSON.stringify({location:'purchaseSheet.js:PurchaseSheet.fetchMissingFnskus:before',message:'about to call getFnsku',data:{rowNum:rowNum,skuRaw:String(sku||''),skuTrim:String(sku||'').trim(),skuHasWhitespace:/\\s/.test(String(sku||'')),skuHasLeadingOrTrailingWhitespace:/^\\s|\\s$/.test(String(sku||''))},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B'})});}catch(e){}
+        try {
+          const raw = String(sku ?? '');
+          console.log(`[DBG][FNSKU][fetchMissingFnskus] rowNum=${rowNum} skuRaw=${JSON.stringify(raw)} skuTrim=${JSON.stringify(raw.trim())} skuCharCodesHead=${JSON.stringify(raw.slice(0,50).split('').map(c=>c.charCodeAt(0)))}`);
+        } catch (e) {}
+        // #endregion
+
+        const skuTrim = String(sku || '').trim();
+        if (!skuTrim) {
+          console.warn(`[FNSKU補完] SKUが空のためFNSKU補完できません: row=${rowNum}`);
+          if (strict) {
+            throw new Error(`SKUが空のためFNSKU補完できません。行${rowNum}のSKU（またはASIN->SKU補完）を確認してください。`);
+          }
+          continue;
+        }
+
+        const fetchedFnsku = fnskuGetter.getFnsku(skuTrim);
         console.log(`Fetched FNSKU for ${sku}: ${fetchedFnsku}`);
         if (rowNum && fnskuCol >= 1) {
           this.writeCell(rowNum, fnskuCol, fetchedFnsku);

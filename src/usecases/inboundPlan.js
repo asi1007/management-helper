@@ -218,4 +218,3 @@ function confirmPlacementOptionFromDialog(inboundPlanId, placementOptionId, allo
     shipmentIds: (shipments || []).map(s => s.shipmentId).filter(Boolean),
   };
 }
-

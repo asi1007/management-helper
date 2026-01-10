@@ -43,7 +43,7 @@ function generateLabelsAndInstructions() {
   // 指示書作成前にSKU空白を補完（ASIN -> SKU）
   sheet.fillMissingSkusFromAsins(accessToken, data);
   // FNSKUも補完（SKU -> FNSKU）
-  sheet.fetchMissingFnskus(accessToken);
+  sheet.fetchMissingFnskus(accessToken, data);
   
   try {
     createInspectionSheetAndWriteLink(sheet, data);
