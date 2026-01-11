@@ -188,31 +188,10 @@ class PurchaseSheet extends BaseSheet {
     const skuColIndex = this._getColumnIndexByName("SKU");
     const skuCol = skuColIndex + 1;
 
-    // まずはシート内の既存行から ASIN -> SKU を作る（同一ASINがあればそれを優先で使う）
-    const asinToSkuLocal = new Map();
-    for (const row of this.data) {
-      const sku = String(row.get("SKU") || '').trim();
-      const asin = String(row.get("ASIN") || '').trim();
-      if (asin && sku && !asinToSkuLocal.has(asin)) {
-        asinToSkuLocal.set(asin, sku);
-      }
-    }
+    const asinToSkuLocal = this._buildAsinToSkuLocalMap_();
+    const { targets } = this._collectMissingSkuTargets_(targetRows);
 
-    const targetAsins = [];
-    const targets = []; // { row, rowNum, asin }
-
-    const rowsToProcess = Array.isArray(targetRows) ? targetRows : this.data;
-    for (const row of rowsToProcess) {
-      const rowNum = row.rowNumber;
-      const sku = String(row.get("SKU") || '').trim();
-      const asin = String(row.get("ASIN") || '').trim();
-      if (!sku && asin) {
-        targetAsins.push(asin);
-        targets.push({ row, rowNum, asin });
-      }
-    }
-
-    if (targetAsins.length === 0) {
+    if (targets.length === 0) {
       console.log('[SKU補完] SKU空白なし -> スキップ');
       return;
     }
@@ -256,6 +235,42 @@ class PurchaseSheet extends BaseSheet {
       }
     }
     console.log(`[SKU補完] 書き込み完了: local=${filledByLocal}, remote=${filledByRemote}, total=${filledByLocal + filledByRemote}/${targets.length}`);
+  }
+
+  /**
+   * 仕入管理シート全体から「ASIN -> SKU」のローカル辞書を作る（同一ASINがあれば既存SKUを流用）
+   * @returns {Map<string,string>}
+   */
+  _buildAsinToSkuLocalMap_() {
+    const asinToSkuLocal = new Map();
+    const sourceRows = Array.isArray(this.allData) ? this.allData : this.data;
+    for (const row of sourceRows) {
+      const sku = String(row.get("SKU") || '').trim();
+      const asin = String(row.get("ASIN") || '').trim();
+      if (asin && sku && !asinToSkuLocal.has(asin)) {
+        asinToSkuLocal.set(asin, sku);
+      }
+    }
+    return asinToSkuLocal;
+  }
+
+  /**
+   * SKUが空の行だけを対象に集める（ASIN有無は問わない）
+   * @param {BaseRow[]|null} targetRows
+   * @returns {{targets: Array<{row: any, rowNum: number, asin: string}>}}
+   */
+  _collectMissingSkuTargets_(targetRows) {
+    const targets = []; // { row, rowNum, asin }
+    const rowsToProcess = Array.isArray(targetRows) ? targetRows : this.data;
+    for (const row of rowsToProcess) {
+      const rowNum = row.rowNumber;
+      const sku = String(row.get("SKU") || '').trim();
+      const asin = String(row.get("ASIN") || '').trim();
+      if (!sku) {
+        targets.push({ row, rowNum, asin });
+      }
+    }
+    return { targets };
   }
 
   writePlanNameToRows(instructionURL) {

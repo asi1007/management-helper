@@ -30,6 +30,8 @@ class BaseSheet {
     const raw = numRows > 0 ? this.sheet.getRange(this.startRow, startColumn, numRows, 100).getValues() : [];
 
     this.data = raw.map((values, i) => new BaseRow(values, (name) => this._getColumnIndexByName(name), this.startRow + i));
+    // getActiveRowData() が this.data を選択行で上書きするため、全行データも保持しておく
+    this.allData = this.data;
   }
 
   _getColumnIndexByName(columnName) {
