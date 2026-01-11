@@ -63,11 +63,16 @@ class WorkRecordSheet extends BaseSheet {
     }
     // ヘッダー行を潰さないため、最低でも2行目以降に書く
     let newRow = Math.max(2, lastJ + 1);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     for (const r of rows) {
       const asin = String((r && r.asin) || '').trim();
       const qty = Number((r && r.quantity) || 0);
       if (!asin || !qty || qty <= 0) continue;
+
+      // I列: 今日の日付
+      this.sheet.getRange(newRow, 9).setValue(today);
 
       // J列: 納品プラン
       if (link) {
