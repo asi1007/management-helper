@@ -52,6 +52,8 @@ class Downloader{
 class InboundPlanCreator{
   constructor(authToken){
     this.API_BASE_URL = "https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20";
+    // 旧 Inbound Shipment API (v0) は QuantityShipped/QuantityReceived を返すことが多いためフォールバック先として保持
+    this.LEGACY_INBOUND_V0_BASE_URL = "https://sellingpartnerapi-fe.amazon.com/fba/inbound/v0";
     this.PLAN_LINK_BASE = "https://sellercentral.amazon.co.jp";
     this.authToken = authToken;
     this.options = {
@@ -63,6 +65,119 @@ class InboundPlanCreator{
         "Content-Type": "application/json"
       }
     };
+  }
+
+  _requestJson_(url, method = 'get', payloadObj = null) {
+    const options = {
+      method: method,
+      muteHttpExceptions: true,
+      headers: {
+        "Accept": "application/json",
+        "x-amz-access-token": this.authToken,
+        "Content-Type": "application/json"
+      }
+    };
+    if (payloadObj) {
+      options.payload = JSON.stringify(payloadObj);
+    }
+    const res = UrlFetchApp.fetch(url, options);
+    const status = res.getResponseCode();
+    const body = res.getContentText();
+    if (status < 200 || status >= 300) {
+      throw new Error(`SP-API request failed (status ${status}): ${body}`);
+    }
+    return body ? JSON.parse(body) : {};
+  }
+
+  /**
+   * Inbound Plan の shipments を取得する（作成/確定と独立して参照したい用途向け）
+   * @param {string} inboundPlanId
+   * @returns {any[]} shipments
+   */
+  listShipments(inboundPlanId) {
+    return this._listShipments(inboundPlanId);
+  }
+
+  /**
+   * Shipment の items を取得する（QuantityShipped / QuantityReceived を含むことを期待）
+   * まず 2024-03-20 のパスを試し、失敗したら v0 にフォールバックする。
+   * @param {string} shipmentId
+   * @returns {any[]} items
+   */
+  getShipmentItems(shipmentId) {
+    const sid = String(shipmentId || '').trim();
+    if (!sid) throw new Error('shipmentId が空です');
+
+    const candidates = [
+      // 2024-03-20 (推定) パス
+      `${this.API_BASE_URL}/shipments/${encodeURIComponent(sid)}/items`,
+      // v0 フォールバック (MarketplaceId パラメータが必要なことが多い)
+      `${this.LEGACY_INBOUND_V0_BASE_URL}/shipments/${encodeURIComponent(sid)}/items?MarketplaceId=${DEFAULT_MARKETPLACE_ID}`,
+    ];
+
+    const errors = [];
+    for (const url of candidates) {
+      try {
+        const json = this._requestJson_(url, 'get');
+        const items = this._extractItemsArray_(json);
+        if (items.length === 0) {
+          console.warn(`[InboundItems] empty items: shipmentId=${sid} url=${url}`);
+        }
+        return items;
+      } catch (e) {
+        errors.push({ url, message: String(e && e.message || e) });
+      }
+    }
+
+    throw new Error(`[InboundItems] items取得に失敗: shipmentId=${sid}, errors=${JSON.stringify(errors)}`);
+  }
+
+  _extractItemsArray_(json) {
+    const j = json || {};
+    // ありがちな形を順番に拾う
+    if (Array.isArray(j.items)) return j.items;
+    if (Array.isArray(j.payload)) return j.payload;
+    if (j.payload && Array.isArray(j.payload.items)) return j.payload.items;
+    if (j.payload && Array.isArray(j.payload.member)) return j.payload.member;
+    if (j.payload && Array.isArray(j.payload.ItemData)) return j.payload.ItemData;
+    if (j.payload && Array.isArray(j.payload.itemData)) return j.payload.itemData;
+    return [];
+  }
+
+  /**
+   * inboundPlanId から shipment items を集計して、QuantityShipped/Received の合計を返す
+   * @param {string} inboundPlanId
+   * @returns {{quantityShipped:number, quantityReceived:number, shipmentIds:string[]}}
+   */
+  getPlanQuantityTotals(inboundPlanId) {
+    const planId = String(inboundPlanId || '').trim();
+    if (!planId) throw new Error('inboundPlanId が空です');
+
+    const shipments = this._listShipments(planId);
+    const shipmentIds = (shipments || []).map(s => s && s.shipmentId ? String(s.shipmentId) : '').filter(Boolean);
+    if (shipmentIds.length === 0) {
+      console.warn(`[InboundItems] shipmentsなし: inboundPlanId=${planId}`);
+      return { quantityShipped: 0, quantityReceived: 0, shipmentIds: [] };
+    }
+
+    let shipped = 0;
+    let received = 0;
+    for (const sid of shipmentIds) {
+      const items = this.getShipmentItems(sid);
+      for (const it of (items || [])) {
+        const qS = Number(
+          (it && (it.quantityShipped ?? it.QuantityShipped ?? it.quantity_shipped)) || 0
+        );
+        const qR = Number(
+          (it && (it.quantityReceived ?? it.QuantityReceived ?? it.quantity_received)) || 0
+        );
+        if (qS) shipped += qS;
+        if (qR) received += qR;
+      }
+    }
+
+    console.log(`[InboundItems] totals: inboundPlanId=${planId} shipped=${shipped} received=${received} shipments=${JSON.stringify(shipmentIds)}`);
+    return { quantityShipped: shipped, quantityReceived: received, shipmentIds };
   }
 
   /**
