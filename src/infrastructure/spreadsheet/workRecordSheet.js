@@ -5,40 +5,9 @@ class WorkRecordSheet extends BaseSheet {
     super(sheetName);
   }
 
-  /**
-   * 指定列の「最後に値が入っている行」を取得する（空行は無視）
-   * @param {number} columnNum 1-based
-   * @returns {number} last row number (1-based). 見つからなければ0
-   */
-  _getLastNonEmptyRowInColumn_(columnNum) {
-    const maxRows = this.sheet.getMaxRows();
-    const chunkSize = 500;
-    for (let end = maxRows; end >= 1; end -= chunkSize) {
-      const start = Math.max(1, end - chunkSize + 1);
-      const values = this.sheet.getRange(start, columnNum, end - start + 1, 1).getValues();
-      for (let i = values.length - 1; i >= 0; i--) {
-        const v = values[i][0];
-        if (v !== '' && v !== null && v !== undefined) {
-          return start + i;
-        }
-      }
-    }
-    return 0;
-  }
-
-  /**
-   * 追記する行番号を決める。
-   * - J列が「運用上の最後尾」だが、appendRecord(A〜)はJを埋めないためA列も考慮して上書きを防ぐ
-   * @returns {number} next row number (1-based)
-   */
-  _getNextAppendRow_() {
-    const lastJ = this._getLastNonEmptyRowInColumn_(10); // J
-    const lastA = this._getLastNonEmptyRowInColumn_(1);  // A
-    return Math.max(lastJ, lastA) + 1;
-  }
-
   appendRecord(asin, purchaseDate, status, timestamp, quantity = null, reason = null, comment = null) {
-    const newRow = this._getNextAppendRow_();
+    const lastRow = this.sheet.getLastRow();
+    const newRow = lastRow + 1;
     
     // ASIN, 購入日, ステータス, 時刻の順で記入
     this.sheet.getRange(newRow, 1).setValue(asin);
@@ -78,7 +47,8 @@ class WorkRecordSheet extends BaseSheet {
     const rows = Array.isArray(asinQuantities) ? asinQuantities : [];
     if (rows.length === 0) return;
 
-    let newRow = this._getNextAppendRow_();
+    const lastRow = this.sheet.getLastRow();
+    let newRow = lastRow + 1;
 
     for (const r of rows) {
       const asin = String((r && r.asin) || '').trim();
