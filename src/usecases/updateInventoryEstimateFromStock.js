@@ -47,7 +47,7 @@ function updateInventoryEstimateFromStockSheet() {
       const rowNum = row.rowNumber;
       const purchaseQty = Number(row.get(qtyColName) || 0) || 0;
 
-      const invEst = Math.max(purchaseQty, temp);
+      const invEst = Math.min(purchaseQty, temp);
       purchase.writeCell(rowNum, invEstCol, invEst);
       written++;
 
