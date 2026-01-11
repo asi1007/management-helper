@@ -32,5 +32,43 @@ class WorkRecordSheet extends BaseSheet {
     
     console.log(`作業記録を追加しました: ASIN=${asin}, 購入日=${purchaseDate}, ステータス=${status}, 時刻=${timestamp}, 数量=${quantity}, 原因=${reason}, コメント=${comment}`);
   }
+
+  /**
+   * 納品プラン作成時のサマリを J-L 列に追記する
+   * - J: 納品プラン（linkがあればHYPERLINK）
+   * - K: ASIN
+   * - L: 数量
+   * @param {{inboundPlanId?: string, link?: string}} planResult
+   * @param {Array<{asin: string, quantity: number}>} asinQuantities
+   */
+  appendInboundPlanSummary(planResult, asinQuantities) {
+    const inboundPlanId = String((planResult && planResult.inboundPlanId) || '').trim();
+    const link = String((planResult && planResult.link) || '').trim();
+    const rows = Array.isArray(asinQuantities) ? asinQuantities : [];
+    if (rows.length === 0) return;
+
+    const lastRow = this.sheet.getLastRow();
+    let newRow = lastRow + 1;
+
+    for (const r of rows) {
+      const asin = String((r && r.asin) || '').trim();
+      const qty = Number((r && r.quantity) || 0);
+      if (!asin || !qty || qty <= 0) continue;
+
+      // J列: 納品プラン
+      if (link) {
+        const text = inboundPlanId || '納品プラン';
+        this.sheet.getRange(newRow, 10).setFormula(`=HYPERLINK("${link}", "${text}")`);
+      } else {
+        this.sheet.getRange(newRow, 10).setValue(inboundPlanId);
+      }
+
+      // K-L列: ASIN, 数量
+      this.sheet.getRange(newRow, 11).setValue(asin);
+      this.sheet.getRange(newRow, 12).setValue(qty);
+
+      newRow++;
+    }
+  }
 }
 

@@ -10,7 +10,30 @@ function createInboundPlanForRows(sheet, accessToken) {
   const planResult = planCreator.createPlan(items);
   
   sheet.writePlanResult(planResult);
+  _recordInboundPlanToWorkRecord_(planResult, items);
   return planResult;
+}
+
+function _recordInboundPlanToWorkRecord_(planResult, items) {
+  const config = getEnvConfig();
+  const sheetName = config.WORK_RECORD_SHEET_NAME;
+  if (!sheetName) return;
+
+  // ASINごとに数量を集計（itemsは SKU でまとまっているが、ASINは同一想定）
+  const qtyByAsin = new Map();
+  for (const item of (items || [])) {
+    const asin = String((item && item.asin) || '').trim();
+    const qty = Number((item && item.quantity) || 0);
+    if (!asin || !qty || qty <= 0) continue;
+    qtyByAsin.set(asin, (qtyByAsin.get(asin) || 0) + qty);
+  }
+
+  const asinQuantities = Array.from(qtyByAsin.entries()).map(([asin, quantity]) => ({ asin, quantity }));
+  if (asinQuantities.length === 0) return;
+
+  const workRecord = new WorkRecordSheet(sheetName);
+  workRecord.appendInboundPlanSummary(planResult, asinQuantities);
+  console.log(`[作業記録] 納品プラン記録: rows=${asinQuantities.length}, inboundPlanId=${planResult && planResult.inboundPlanId ? planResult.inboundPlanId : ''}`);
 }
 
 function createInboundPlanFromActiveRows() {
@@ -44,6 +67,7 @@ function createInboundPlanFromActiveRowsWithPlacementSelection() {
   const creator = new InboundPlanCreator(accessToken);
   const planResult = creator.createPlan(items);
   sheet.writePlanResult(planResult);
+  _recordInboundPlanToWorkRecord_(planResult, items);
 
   // 1.5 プラン作成完了待機（placementOptions生成の前に確実に完了させる）
   creator.waitInboundPlanCreation(planResult.operationId);
