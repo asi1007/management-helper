@@ -19,6 +19,7 @@ function updateInventoryEstimateFromStockSheet() {
 
   const qtyColName = '購入数';
   const asinColName = 'ASIN';
+  const statusColName = 'ステータス';
   const invEstColName = '在庫数推測値';
   const statusEstColName = 'ステータス推測値';
 
@@ -31,6 +32,9 @@ function updateInventoryEstimateFromStockSheet() {
   for (const row of allRows) {
     const asin = String(row.get(asinColName) || '').trim();
     if (!asin) continue;
+    const status = String(row.get(statusColName) || '').trim();
+    // 更新対象: ステータスが在庫あり の行のみ
+    if (status !== '在庫あり') continue;
     if (!groups.has(asin)) groups.set(asin, []);
     groups.get(asin).push(row);
   }
