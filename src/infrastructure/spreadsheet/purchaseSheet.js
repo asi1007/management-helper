@@ -104,16 +104,37 @@ class PurchaseSheet extends BaseSheet {
   }
 
   writePlanResult(planResult) {
-    if (planResult.link) {
-      const displayText = planResult.inboundPlanId || this._generatePlanNameText();
-      
-      const linkFormula = `=HYPERLINK("${planResult.link}", "${displayText}")`;
-      this.writeColumn("納品プラン", { type: 'formula', value: linkFormula });
-    }
-    
+    const planCol = this._getColumnIndexByName("納品プラン") + 1;
+    const shipDateCol = this._getColumnIndexByName("発送日") + 1;
+
+    const link = planResult && planResult.link ? String(planResult.link) : '';
+    const inboundPlanId = planResult && planResult.inboundPlanId ? String(planResult.inboundPlanId) : '';
+
     const dateOnly = new Date();
     dateOnly.setHours(0, 0, 0, 0);
-    this.writeColumn("発送日", dateOnly);
+    const dateStr = Utilities.formatDate(dateOnly, 'Asia/Tokyo', 'yyyy/MM/dd');
+
+    for (const rowNum of this.rowNumbers) {
+      // 納品プラン
+      if (link) {
+        const displayText = inboundPlanId || this._generatePlanNameText();
+        const linkFormula = `=HYPERLINK("${link}", "${displayText}")`;
+        const r = this.sheet.getRange(rowNum, planCol);
+        r.setFormula(linkFormula);
+        console.log(`[納品プラン] wrote ${r.getA1Notation()} formula=${linkFormula}`);
+      } else if (inboundPlanId) {
+        const r = this.sheet.getRange(rowNum, planCol);
+        r.setValue(inboundPlanId);
+        console.log(`[納品プラン] wrote ${r.getA1Notation()} value=${inboundPlanId}`);
+      } else {
+        console.log(`[納品プラン] skip row=${rowNum} (no link/inboundPlanId)`);
+      }
+
+      // 発送日
+      const d = this.sheet.getRange(rowNum, shipDateCol);
+      d.setValue(dateOnly);
+      console.log(`[発送日] wrote ${d.getA1Notation()} value=${dateStr}`);
+    }
   }
 
   decreasePurchaseQuantity(quantity) {
