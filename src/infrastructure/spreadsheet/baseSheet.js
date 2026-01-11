@@ -13,7 +13,9 @@ class BaseSheet {
     this.startColumn = startColumn;
     
     // 列名->index 解決に使うヘッダー（startRow行のみ）
-    const headerRaw = this.sheet.getRange(this.headerRow, startColumn, 1, 100).getValues()[0] || [];
+    // NOTE: 仕入管理シートは 101列目など100列超を使うため、lastColumn まで読む
+    const maxColumns = Math.max(1, this.sheet.getLastColumn() - startColumn + 1);
+    const headerRaw = this.sheet.getRange(this.headerRow, startColumn, 1, maxColumns).getValues()[0] || [];
     this._headersPrimaryRaw = headerRaw;
     this._headersPrimary = headerRaw.map(h => String(h ?? '').trim());
     this._headerIndexMap = new Map();
@@ -25,9 +27,9 @@ class BaseSheet {
       }
     }
     
-    // データ範囲を計算（startRowから最後の行まで、100列分）
+    // データ範囲を計算（startRowから最後の行まで、シートの最終列まで）
     const numRows = Math.max(0, this.lastRow - this.startRow + 1);
-    const raw = numRows > 0 ? this.sheet.getRange(this.startRow, startColumn, numRows, 100).getValues() : [];
+    const raw = numRows > 0 ? this.sheet.getRange(this.startRow, startColumn, numRows, maxColumns).getValues() : [];
 
     this.data = raw.map((values, i) => new BaseRow(values, (name) => this._getColumnIndexByName(name), this.startRow + i));
     // getActiveRowData() が this.data を選択行で上書きするため、全行データも保持しておく
