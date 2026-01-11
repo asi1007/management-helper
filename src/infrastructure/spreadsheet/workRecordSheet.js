@@ -47,8 +47,22 @@ class WorkRecordSheet extends BaseSheet {
     const rows = Array.isArray(asinQuantities) ? asinQuantities : [];
     if (rows.length === 0) return;
 
-    const lastRow = this.sheet.getLastRow();
-    let newRow = lastRow + 1;
+    // J列の「最後に値が入っている行」を基準に追記する
+    // （J列は納品プランサマリの主キー列）
+    const maxRow = this.sheet.getLastRow();
+    let lastJ = 0;
+    if (maxRow > 0) {
+      const jValues = this.sheet.getRange(1, 10, maxRow, 1).getValues(); // J1:JmaxRow
+      for (let i = jValues.length - 1; i >= 0; i--) {
+        const v = jValues[i][0];
+        if (v !== '' && v !== null && v !== undefined) {
+          lastJ = i + 1; // 1-based row
+          break;
+        }
+      }
+    }
+    // ヘッダー行を潰さないため、最低でも2行目以降に書く
+    let newRow = Math.max(2, lastJ + 1);
 
     for (const r of rows) {
       const asin = String((r && r.asin) || '').trim();
