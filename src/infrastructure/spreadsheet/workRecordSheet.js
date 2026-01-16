@@ -34,10 +34,11 @@ class WorkRecordSheet extends BaseSheet {
   }
 
   /**
-   * 納品プラン作成時のサマリを J-L 列に追記する
-   * - J: 納品プラン（linkがあればHYPERLINK）
-   * - K: ASIN
-   * - L: 数量
+   * 納品プラン作成時のサマリを（右に2列ずらして）K-N 列に追記する
+   * - K: プラン作成日（今日の日付）
+   * - L: 納品プラン（linkがあればHYPERLINK）
+   * - M: ASIN
+   * - N: 数量
    * @param {{inboundPlanId?: string, link?: string}} planResult
    * @param {Array<{asin: string, quantity: number}>} asinQuantities
    */
@@ -47,22 +48,22 @@ class WorkRecordSheet extends BaseSheet {
     const rows = Array.isArray(asinQuantities) ? asinQuantities : [];
     if (rows.length === 0) return;
 
-    // J列の「最後に値が入っている行」を基準に追記する
-    // （J列は納品プランサマリの主キー列）
+    // L列の「最後に値が入っている行」を基準に追記する
+    // （L列は納品プランサマリの主キー列）
     const maxRow = this.sheet.getLastRow();
-    let lastJ = 0;
+    let lastL = 0;
     if (maxRow > 0) {
-      const jValues = this.sheet.getRange(1, 10, maxRow, 1).getValues(); // J1:JmaxRow
-      for (let i = jValues.length - 1; i >= 0; i--) {
-        const v = jValues[i][0];
+      const lValues = this.sheet.getRange(1, 12, maxRow, 1).getValues(); // L1:LmaxRow
+      for (let i = lValues.length - 1; i >= 0; i--) {
+        const v = lValues[i][0];
         if (v !== '' && v !== null && v !== undefined) {
-          lastJ = i + 1; // 1-based row
+          lastL = i + 1; // 1-based row
           break;
         }
       }
     }
     // ヘッダー行を潰さないため、最低でも2行目以降に書く
-    let newRow = Math.max(2, lastJ + 1);
+    let newRow = Math.max(2, lastL + 1);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -71,20 +72,20 @@ class WorkRecordSheet extends BaseSheet {
       const qty = Number((r && r.quantity) || 0);
       if (!asin || !qty || qty <= 0) continue;
 
-      // I列: 今日の日付
-      this.sheet.getRange(newRow, 9).setValue(today);
+      // K列: 今日の日付（プラン作成日）
+      this.sheet.getRange(newRow, 11).setValue(today);
 
-      // J列: 納品プラン
+      // L列: 納品プラン
       if (link) {
         const text = inboundPlanId || '納品プラン';
-        this.sheet.getRange(newRow, 10).setFormula(`=HYPERLINK("${link}", "${text}")`);
+        this.sheet.getRange(newRow, 12).setFormula(`=HYPERLINK("${link}", "${text}")`);
       } else {
-        this.sheet.getRange(newRow, 10).setValue(inboundPlanId);
+        this.sheet.getRange(newRow, 12).setValue(inboundPlanId);
       }
 
-      // K-L列: ASIN, 数量
-      this.sheet.getRange(newRow, 11).setValue(asin);
-      this.sheet.getRange(newRow, 12).setValue(qty);
+      // M-N列: ASIN, 数量
+      this.sheet.getRange(newRow, 13).setValue(asin);
+      this.sheet.getRange(newRow, 14).setValue(qty);
 
       newRow++;
     }
