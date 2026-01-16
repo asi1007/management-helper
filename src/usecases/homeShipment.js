@@ -14,6 +14,11 @@ function createInboundPlanFromHomeShipmentSheet() {
   const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   purchaseSheet.filter("行番号", rowNumbers);
 
+  // 2.5 納品プラン作成前にSKU空白を補完（同一ASINの既存SKU -> なければ出品レポート）
+  console.log(`[HomeShipment] SKU補完 start: rows=${purchaseSheet.data.length}`);
+  purchaseSheet.fillMissingSkusFromAsins(accessToken, purchaseSheet.data);
+  console.log('[HomeShipment] SKU補完 done');
+
   // 3. createInboundPlanForRowsで納品プランを作成
   const result = createInboundPlanForRows(purchaseSheet, accessToken);
   console.log(`Inbound plan created from HomeShipmentSheet: inboundPlanId=${result.inboundPlanId}, operationId=${result.operationId}, link=${result.link}`);
