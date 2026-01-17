@@ -500,31 +500,18 @@ class InboundPlanCreator{
   }
 
   createPlan(items){
-    // 1. 納品プラン作成 (リトライ付き)
     const planResult = this._createInboundPlanWithRetry(items);
     const inboundPlanId = planResult.inboundPlanId;
     const createOperationId = planResult.operationId;
     console.log(`Inbound Plan Created: ${inboundPlanId} (Operation: ${createOperationId})`);
 
-    // 1.5〜5 は「コメントアウト部分を復活」したもの。
-    // ただし、UI(フォーム)で選ぶ場合はこの関数内で入力待ちできないため、
-    // ここでは「候補生成＆一覧ログ」までをデフォルトで実行する。
-    //
-    // 必要なら呼び出し側で `confirmPlacementOption(inboundPlanId, placementOptionId)` を呼んで確定する。
-    // （UI選択フローは usecases/inboundPlan.js の createInboundPlanFromActiveRowsWithPlacementSelection を利用）
-
-    // 1.5 プラン作成完了待機
     this.waitInboundPlanCreation(createOperationId);
-
-    // 2-3 Placement Options 生成→一覧取得（毎回候補概要ログ）
-    const placementOptions = this.getPlacementOptions(inboundPlanId);
 
     return {
       inboundPlanId,
       operationId: planResult.operationId,
       link: `${this.PLAN_LINK_BASE}/fba/sendtoamazon/pack_later_confirm_shipments?wf=${inboundPlanId}`,
-      shipmentIds: [],
-      placementOptions
+      shipmentIds: []
     };
   }
 

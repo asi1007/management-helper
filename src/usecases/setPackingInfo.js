@@ -1,16 +1,27 @@
 /* exported setPackingInfoFromActiveRow, submitPackingInfoFromDialog */
 
 function _parseCartonInput(inputText) {
-  const lines = String(inputText || '').split('\n').filter(line => line.trim());
+  const entries = String(inputText || '')
+    .split(/\s+(?=\d+(?:-\d+)?[：:])/)
+    .map(s => s.trim())
+    .filter(Boolean);
+
   const cartons = [];
 
-  for (const line of lines) {
-    const match = line.match(/^(\d+(?:-\d+)?)\s*[：:]\s*(\d+(?:\.\d+)?)\s*[*×x]\s*(\d+(?:\.\d+)?)\s*[*×x]\s*(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*(?:KG|kg)?$/i);
-    if (!match) {
-      throw new Error(`解析できない行: "${line}"\n形式: 箱番号：長さ*幅*高さ 重さKG\n例: 1-2：60*40*32 29.1KG`);
+  for (const entry of entries) {
+    const match1 = entry.match(/^(\d+(?:-\d+)?)\s*[：:]\s*(\d+(?:\.\d+)?)\s*[*×x]\s*(\d+(?:\.\d+)?)\s*[*×x]\s*(\d+(?:\.\d+)?)\s*(?:cm)?\s+(\d+(?:\.\d+)?)\s*(?:KG|kg)?$/i);
+    const match2 = entry.match(/^(\d+(?:-\d+)?)\s*[：:]\s*(\d+(?:\.\d+)?)\s*(?:KG|kg)?\s+(\d+(?:\.\d+)?)\s*[*×x]\s*(\d+(?:\.\d+)?)\s*[*×x]\s*(\d+(?:\.\d+)?)\s*(?:cm)?$/i);
+
+    let boxRange, lengthCm, widthCm, heightCm, weightKg;
+
+    if (match1) {
+      [, boxRange, lengthCm, widthCm, heightCm, weightKg] = match1;
+    } else if (match2) {
+      [, boxRange, weightKg, lengthCm, widthCm, heightCm] = match2;
+    } else {
+      throw new Error(`解析できない: "${entry}"\n形式1: 箱番号：長さ*幅*高さ 重さKG\n形式2: 箱番号：重さKG 長さ*幅*高さcm`);
     }
 
-    const [, boxRange, lengthCm, widthCm, heightCm, weightKg] = match;
     const dimensions = {
       length: parseFloat(lengthCm),
       width: parseFloat(widthCm),
@@ -71,58 +82,39 @@ function setPackingInfoFromActiveRow() {
 }
 
 function _showPackingInfoDialog_(inboundPlanId) {
-  const html = HtmlService.createHtmlOutput(`
-    <div style="font-family: Arial, sans-serif; padding: 8px;">
-      <h3>荷物情報を入力</h3>
-      <div style="margin:8px 0;">InboundPlanId: <code>${inboundPlanId}</code></div>
-      <div style="margin:8px 0;">
-        <label>
-          荷物情報（1行に1パターン）：
-          <br>
-          <textarea id="cartonInput" rows="10" cols="50" placeholder="1-2：60*40*32　29.1KG&#10;3：30*40*50　25.8KG&#10;4：30*40*50　28.2KG"></textarea>
-        </label>
-      </div>
-      <div style="margin:8px 0; font-size:12px; color:#666;">
-        形式: 箱番号：長さ*幅*高さ 重さKG<br>
-        箱番号は「1-2」のように範囲指定も可能（同じサイズ・重さの場合）
-      </div>
-      <div style="margin-top:12px;">
-        <button onclick="submitCartonInfo()">送信</button>
-        <button onclick="google.script.host.close()">キャンセル</button>
-      </div>
-      <pre id="status" style="margin-top:12px; background:#f6f6f6; padding:8px;"></pre>
-    </div>
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.prompt(
+    '荷物情報入力',
+    `InboundPlanId: ${inboundPlanId}\n\n荷物情報を入力してください（1行に1パターン）:\n形式: 箱番号：長さ*幅*高さ 重さKG\n例: 1-2：60*40*32 29.1KG`,
+    ui.ButtonSet.OK_CANCEL
+  );
 
-    <script>
-      const inboundPlanId = ${JSON.stringify(inboundPlanId)};
+  if (response.getSelectedButton() !== ui.Button.OK) {
+    console.log('[setPackingInfo] キャンセルされました');
+    return;
+  }
 
-      function submitCartonInfo() {
-        const input = document.getElementById('cartonInput').value;
-        if (!input.trim()) {
-          document.getElementById('status').textContent = '荷物情報を入力してください';
-          return;
-        }
+  const cartonInputText = response.getResponseText();
+  if (!cartonInputText || !cartonInputText.trim()) {
+    throw new Error('荷物情報が入力されていません');
+  }
 
-        document.getElementById('status').textContent = '送信中...';
-        google.script.run
-          .withSuccessHandler((res) => {
-            document.getElementById('status').textContent =
-              '完了\\n' + JSON.stringify(res, null, 2);
-          })
-          .withFailureHandler((err) => {
-            document.getElementById('status').textContent =
-              'エラー\\n' + (err && err.message ? err.message : String(err));
-          })
-          .submitPackingInfoFromDialog(inboundPlanId, input);
-      }
-    </script>
-  `).setWidth(600).setHeight(500);
-
-  SpreadsheetApp.getUi().showModalDialog(html, '荷物情報入力');
+  const result = submitPackingInfoFromDialog(inboundPlanId, cartonInputText);
+  ui.alert('完了', `荷物情報を送信しました\nboxCount: ${result.boxCount}`, ui.ButtonSet.OK);
 }
 
 function submitPackingInfoFromDialog(inboundPlanId, cartonInputText) {
-  const accessToken = getAuthToken();
+  console.log(`[submitPackingInfoFromDialog] start: inboundPlanId=${inboundPlanId}`);
+
+  let accessToken;
+  try {
+    accessToken = getAuthToken();
+    console.log(`[submitPackingInfoFromDialog] accessToken取得成功`);
+  } catch (e) {
+    console.error(`[submitPackingInfoFromDialog] accessToken取得失敗: ${e.message}`);
+    throw e;
+  }
+
   const creator = new InboundPlanCreator(accessToken);
 
   const cartons = _parseCartonInput(cartonInputText);
@@ -138,4 +130,9 @@ function submitPackingInfoFromDialog(inboundPlanId, cartonInputText) {
   console.log(`[setPackingInfo] result: ${JSON.stringify(result)}`);
 
   return result;
+}
+
+function testSubmitPackingInfo() {
+  const result = submitPackingInfoFromDialog('wf5db5a649-f80b-412c-bdad-816c8d6d540e', '1：60*40*32 29.1KG');
+  console.log(result);
 }
