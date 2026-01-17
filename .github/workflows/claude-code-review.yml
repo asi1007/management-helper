@@ -1,0 +1,44 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          echo "files=$(git diff --name-only origin/${{ github.base_ref }}..HEAD | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-20250514
+          direct_prompt: |
+            以下のPRの変更をレビューしてください。
+
+            ## レビュー観点
+            1. **コードの品質**: 可読性、保守性、DRY原則
+            2. **バグの可能性**: エッジケース、エラーハンドリング
+            3. **セキュリティ**: 脆弱性、機密情報の漏洩
+            4. **パフォーマンス**: 非効率な処理、メモリリーク
+            5. **ベストプラクティス**: JavaScript/GASの慣習に従っているか
+
+            ## 出力形式
+            - 問題がある場合は具体的な行番号と修正提案を含めてください
+            - 良い点も指摘してください
+            - 日本語でレビューしてください
+
+            変更されたファイル: ${{ steps.changed-files.outputs.files }}
