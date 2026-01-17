@@ -507,11 +507,29 @@ class InboundPlanCreator{
 
     this.waitInboundPlanCreation(createOperationId);
 
+    // PlacementOptions生成・取得
+    const placementOptions = this.getPlacementOptions(inboundPlanId);
+
+    // 非パレットオプションを自動選択
+    const nonPalletOptions = placementOptions.filter(o => !this._isPalletLikePlacementOption(o));
+    if (nonPalletOptions.length === 0) {
+      throw new Error('非パレットのPlacement Optionがありません。セラーセントラルで手動選択してください。');
+    }
+
+    const selectedOption = nonPalletOptions[0];
+    const placementOptionId = selectedOption.placementOptionId || selectedOption.placementOptionID || selectedOption.id;
+    console.log(`[createPlan] 自動選択: placementOptionId=${placementOptionId}`);
+
+    // PlacementOption確定
+    const shipments = this.confirmPlacementOption(inboundPlanId, placementOptionId);
+    const shipmentIds = (shipments || []).map(s => s.shipmentId).filter(Boolean);
+
     return {
       inboundPlanId,
       operationId: planResult.operationId,
       link: `${this.PLAN_LINK_BASE}/fba/sendtoamazon/pack_later_confirm_shipments?wf=${inboundPlanId}`,
-      shipmentIds: []
+      shipmentIds,
+      placementOptionId
     };
   }
 
