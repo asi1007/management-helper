@@ -527,6 +527,82 @@ class InboundPlanCreator{
       placementOptions
     };
   }
+
+  getPackingGroupId(inboundPlanId) {
+    const url = `${this.API_BASE_URL}/inboundPlans/${inboundPlanId}/packingGroups`;
+    const json = this._requestJson_(url, 'get');
+    const groups = json.packingGroups || [];
+    if (groups.length === 0) {
+      throw new Error(`PackingGroupが見つかりません: inboundPlanId=${inboundPlanId}`);
+    }
+    return groups[0].packingGroupId;
+  }
+
+  getPackingGroupItems(inboundPlanId, packingGroupId) {
+    const url = `${this.API_BASE_URL}/inboundPlans/${inboundPlanId}/packingGroups/${packingGroupId}/items`;
+    const json = this._requestJson_(url, 'get');
+    return json.items || [];
+  }
+
+  _cmToInches(cm) {
+    return Math.round(cm / 2.54 * 100) / 100;
+  }
+
+  _kgToLbs(kg) {
+    return Math.round(kg * 2.20462 * 100) / 100;
+  }
+
+  setPackingInformation(inboundPlanId, packingGroupId, cartons, items) {
+    const boxes = cartons.map((carton, index) => {
+      const boxItems = items.map(item => ({
+        msku: item.msku,
+        quantity: Math.ceil(item.quantity / cartons.length),
+        prepOwner: item.prepOwner || 'SELLER',
+        labelOwner: item.labelOwner || 'SELLER'
+      }));
+
+      return {
+        weight: {
+          unit: 'LB',
+          value: this._kgToLbs(carton.weight)
+        },
+        dimensions: {
+          unitOfMeasurement: 'IN',
+          length: this._cmToInches(carton.dimensions.length),
+          width: this._cmToInches(carton.dimensions.width),
+          height: this._cmToInches(carton.dimensions.height)
+        },
+        contentInformationSource: 'BOX_CONTENT_PROVIDED',
+        items: boxItems
+      };
+    });
+
+    const payload = {
+      packageGroupings: [
+        {
+          packingGroupId: packingGroupId,
+          boxes: boxes
+        }
+      ]
+    };
+
+    console.log(`[setPackingInformation] payload: ${JSON.stringify(payload)}`);
+
+    const url = `${this.API_BASE_URL}/inboundPlans/${inboundPlanId}/packingInformation`;
+    const json = this._requestJson_(url, 'post', payload);
+    const operationId = json.operationId;
+
+    if (operationId) {
+      this._pollOperation(operationId, 'Set Packing Information');
+    }
+
+    return {
+      inboundPlanId,
+      packingGroupId,
+      operationId,
+      boxCount: boxes.length
+    };
+  }
 }
 
 class FnskuGetter{
