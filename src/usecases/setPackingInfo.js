@@ -136,3 +136,74 @@ function testSubmitPackingInfo() {
   const result = submitPackingInfoFromDialog('wf5db5a649-f80b-412c-bdad-816c8d6d540e', '1：60*40*32 29.1KG');
   console.log(result);
 }
+
+function debugPlacementOptions() {
+  const accessToken = getAuthToken();
+
+  // 最新のinboundPlanIdを入力してください
+  const inboundPlanId = 'wff38cf348-23c2-42a6-a4e5-52f962d2df17';
+
+  const baseUrl = 'https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20';
+  const headers = {
+    'Accept': 'application/json',
+    'x-amz-access-token': accessToken
+  };
+
+  // 1. Shipments一覧を取得
+  console.log('=== Shipments ===');
+  const shipmentsRes = UrlFetchApp.fetch(`${baseUrl}/inboundPlans/${inboundPlanId}/shipments`, {
+    method: 'get', muteHttpExceptions: true, headers
+  });
+  const shipmentsJson = JSON.parse(shipmentsRes.getContentText());
+  console.log(JSON.stringify(shipmentsJson, null, 2));
+
+  // 2. 各Shipmentの詳細を取得
+  const shipments = shipmentsJson.shipments || [];
+  for (const s of shipments) {
+    const shipmentId = s.shipmentId;
+    console.log(`\n=== Shipment Detail: ${shipmentId} ===`);
+
+    // Shipment詳細
+    try {
+      const detailRes = UrlFetchApp.fetch(`${baseUrl}/inboundPlans/${inboundPlanId}/shipments/${shipmentId}`, {
+        method: 'get', muteHttpExceptions: true, headers
+      });
+      console.log('Shipment:', detailRes.getContentText());
+    } catch (e) {
+      console.log('Shipment detail error:', e.message);
+    }
+
+    // Transportation Options（配送オプション）
+    console.log(`\n=== Transportation Options for ${shipmentId} ===`);
+    try {
+      const transRes = UrlFetchApp.fetch(`${baseUrl}/inboundPlans/${inboundPlanId}/shipments/${shipmentId}/transportationOptions`, {
+        method: 'get', muteHttpExceptions: true, headers
+      });
+      console.log('Transportation Options:', transRes.getContentText());
+    } catch (e) {
+      console.log('Transportation Options error:', e.message);
+    }
+
+    // Delivery Window Options
+    console.log(`\n=== Delivery Window Options for ${shipmentId} ===`);
+    try {
+      const dwRes = UrlFetchApp.fetch(`${baseUrl}/inboundPlans/${inboundPlanId}/shipments/${shipmentId}/deliveryWindowOptions`, {
+        method: 'get', muteHttpExceptions: true, headers
+      });
+      console.log('Delivery Window Options:', dwRes.getContentText());
+    } catch (e) {
+      console.log('Delivery Window Options error:', e.message);
+    }
+  }
+
+  // 3. PackingGroups
+  console.log('\n=== Packing Groups ===');
+  try {
+    const pgRes = UrlFetchApp.fetch(`${baseUrl}/inboundPlans/${inboundPlanId}/packingGroups`, {
+      method: 'get', muteHttpExceptions: true, headers
+    });
+    console.log('Packing Groups:', pgRes.getContentText());
+  } catch (e) {
+    console.log('Packing Groups error:', e.message);
+  }
+}
