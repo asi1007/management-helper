@@ -105,6 +105,16 @@ function _appendDetailInstructionSheets(targetSpreadsheet, matchedItems) {
     }
 
     try {
+      const file = DriveApp.getFileById(parsed.spreadsheetId);
+      const mimeType = file.getMimeType();
+
+      if (mimeType !== 'application/vnd.google-apps.spreadsheet') {
+        const isExcel = mimeType.includes('spreadsheetml') || mimeType.includes('excel');
+        const formatHint = isExcel ? 'xlsx/Excel形式です。Googleスプレッドシートに変換してください' : `MIMEタイプ: ${mimeType}`;
+        console.warn(`[検品] 詳細指示書がGoogleスプレッドシート形式ではありません: ASIN=${item.asin}, ${formatHint}`);
+        continue;
+      }
+
       const srcSs = SpreadsheetApp.openById(parsed.spreadsheetId);
       const srcSheet =
         (parsed.gid ? srcSs.getSheetById(Number(parsed.gid)) : null) ||
@@ -122,6 +132,7 @@ function _appendDetailInstructionSheets(targetSpreadsheet, matchedItems) {
       console.log(`[検品] 詳細指示書シート追加: ASIN=${item.asin}, name=${desiredName}`);
     } catch (e) {
       console.warn(`[検品] 詳細指示書シート追加に失敗: ASIN=${item.asin}, url=${item.detailInstructionUrl}, error=${e.message}`);
+      try { SpreadsheetApp.flush(); } catch (_) {}
     }
   }
 }
