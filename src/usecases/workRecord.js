@@ -1,4 +1,4 @@
-/* exported recordWorkStart, recordWorkEnd, recordDefect */
+/* exported recordWorkStart, recordWorkEnd, recordDefect, processDefectRecord */
 
 function recordWorkStart() {
   const { config } = getConfigSettingAndToken();
@@ -19,13 +19,15 @@ function recordWorkStart() {
   for (const row of activeData) {
     const asin = row.get("ASIN");
     const purchaseDate = row.get("購入日");
+    let orderNumber = '';
+    try { orderNumber = row.get("注文番号") || ''; } catch (e) {}
     
     if (!asin) {
       console.warn(`ASINが空の行をスキップしました`);
       continue;
     }
     
-    workRecordSheet.appendRecord(asin, purchaseDate, "開始", timestamp);
+    workRecordSheet.appendRecord(asin, purchaseDate, "開始", timestamp, null, null, null, orderNumber);
   }
   
   console.log(`${activeData.length}件の作業記録（開始）を追加しました`);
@@ -50,13 +52,15 @@ function recordWorkEnd() {
   for (const row of activeData) {
     const asin = row.get("ASIN");
     const purchaseDate = row.get("購入日");
+    let orderNumber = '';
+    try { orderNumber = row.get("注文番号") || ''; } catch (e) {}
     
     if (!asin) {
       console.warn(`ASINが空の行をスキップしました`);
       continue;
     }
     
-    workRecordSheet.appendRecord(asin, purchaseDate, "終了", timestamp);
+    workRecordSheet.appendRecord(asin, purchaseDate, "終了", timestamp, null, null, null, orderNumber);
   }
   
   console.log(`${activeData.length}件の作業記録（終了）を追加しました`);
@@ -87,7 +91,23 @@ function recordDefect() {
     Browser.msgBox('エラー', '選択された行に有効な行番号がありません。', Browser.Buttons.OK);
     return;
   }
-  
+
+  // 仕入管理シートの行番号とASIN/購入日/注文番号を取得
+  const rowInfo = activeData.map(row => {
+    let orderNumber = '';
+    try { orderNumber = row.get("注文番号") || ''; } catch (e) {}
+    return {
+      homeRowNumber: row.rowNumber,
+      purchaseRowNumber: row.get("行番号"),
+      asin: row.get("ASIN"),
+      purchaseDate: row.get("購入日"),
+      orderNumber: orderNumber
+    };
+  }).filter(info => info.purchaseRowNumber);
+
+  // PropertiesServiceに行情報を保存（HTMLから渡す代わりに）
+  PropertiesService.getScriptProperties().setProperty('defectRowInfo', JSON.stringify(rowInfo));
+
   // 3. HTMLフォームを表示して不良数、原因、コメントを入力
   const htmlOutput = HtmlService.createHtmlOutput(_getDefectFormHtml(defectReasonList))
     .setWidth(500)
@@ -101,10 +121,10 @@ function recordDefect() {
 }
 
 function _getDefectFormHtml(defectReasonList) {
-  const reasonOptions = defectReasonList.map((reason, index) => 
+  const reasonOptions = defectReasonList.map((reason, index) =>
     `<option value="${index}">${reason}</option>`
   ).join('');
-  
+
   return `
     <!DOCTYPE html>
     <html>
@@ -191,17 +211,17 @@ function _getDefectFormHtml(defectReasonList) {
             const quantity = parseInt(document.getElementById('quantity').value);
             const reasonIndex = parseInt(document.getElementById('reason').value);
             const comment = document.getElementById('comment').value;
-            
+
             if (isNaN(quantity) || quantity <= 0) {
               alert('有効な不良数を入力してください。');
               return;
             }
-            
+
             if (reasonIndex === '' || isNaN(reasonIndex)) {
               alert('原因を選択してください。');
               return;
             }
-            
+
             google.script.run
               .withSuccessHandler(function(message) {
                 alert(message || '不良品登録を完了しました。');
@@ -210,7 +230,7 @@ function _getDefectFormHtml(defectReasonList) {
               .withFailureHandler(function(error) {
                 alert('エラーが発生しました: ' + error.message);
               })
-              ._processDefectRecord(quantity, reasonIndex, comment);
+              .processDefectRecord(quantity, reasonIndex, comment);
           });
         </script>
       </body>
@@ -218,31 +238,34 @@ function _getDefectFormHtml(defectReasonList) {
   `;
 }
 
-function _processDefectRecord(quantity, reasonIndex, comment) {
+function processDefectRecord(quantity, reasonIndex, comment) {
   const config = getEnvConfig();
-  
+
   // 自宅発送シートのS列から不良原因リストを読み込み
   const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   const defectReasonList = homeSheet.getDefectReasonList();
-  
+
   if (reasonIndex < 0 || reasonIndex >= defectReasonList.length) {
     throw new Error('無効な原因が選択されました。');
   }
-  
+
   const selectedReason = defectReasonList[reasonIndex];
-  
-  // 該当行の行番号を取得
-  const activeData = homeSheet.getActiveRowData();
-  if (activeData.length === 0) {
-    throw new Error('選択された行がありません。');
+
+  // PropertiesServiceから行情報を読み取る
+  const rowInfoJson = PropertiesService.getScriptProperties().getProperty('defectRowInfo');
+  if (!rowInfoJson) {
+    throw new Error('行情報が見つかりません。再度不良品登録ボタンを押してください。');
   }
-  
-  // BaseRow(row) から直接、実シート上の行番号を取得する
-  const rowNumbers = activeData.map(row => row.get("行番号")).filter(rn => rn !== null && rn !== undefined && rn !== '');
+  const rowInfo = JSON.parse(rowInfoJson);
+  if (!rowInfo || rowInfo.length === 0) {
+    throw new Error('行情報が渡されていません。');
+  }
+
+  const rowNumbers = rowInfo.map(info => info.purchaseRowNumber).filter(rn => rn !== null && rn !== undefined && rn !== '');
   if (rowNumbers.length === 0) {
     throw new Error('選択された行に有効な行番号がありません。');
   }
-  
+
   // 仕入管理シートの購入数を不良数分減らす
   const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   purchaseSheet.filter("行番号", rowNumbers);
@@ -257,14 +280,15 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
   if (zeroQuantityRows.length > 0) {
     purchaseSheet.deleteRows(zeroQuantityRows);
   }
-  
+
   // 作業記録に登録
   const workRecordSheet = new WorkRecordSheet(config.WORK_RECORD_SHEET_NAME);
   const timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
-  
-  for (const row of activeData) {
-    const asin = row.get("ASIN");
-    const purchaseDate = row.get("購入日");
+
+  for (const info of rowInfo) {
+    const asin = info.asin;
+    const purchaseDate = info.purchaseDate;
+    const orderNumber = info.orderNumber || '';
     
     if (!asin) {
       console.warn(`ASINが空の行をスキップしました`);
@@ -272,10 +296,10 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
     }
     
     // ステータスは「不良」のみを記録し、原因とコメントは別の列に記録
-    workRecordSheet.appendRecord(asin, purchaseDate, "不良", timestamp, quantity, selectedReason, comment || null);
+    workRecordSheet.appendRecord(asin, purchaseDate, "不良", timestamp, quantity, selectedReason, comment || null, orderNumber);
   }
   
-  console.log(`${activeData.length}件の不良品記録を追加しました`);
+  console.log(`${rowInfo.length}件の不良品記録を追加しました`);
   return `不良品登録を完了しました。\n不良数: ${quantity}\n原因: ${selectedReason}`;
 }
 

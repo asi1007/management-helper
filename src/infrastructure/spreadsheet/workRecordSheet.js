@@ -5,7 +5,7 @@ class WorkRecordSheet extends BaseSheet {
     super(sheetName);
   }
 
-  appendRecord(asin, purchaseDate, status, timestamp, quantity = null, reason = null, comment = null) {
+  appendRecord(asin, purchaseDate, status, timestamp, quantity = null, reason = null, comment = null, orderNumber = null) {
     const lastRow = this.sheet.getLastRow();
     const newRow = lastRow + 1;
     
@@ -30,22 +30,28 @@ class WorkRecordSheet extends BaseSheet {
       this.sheet.getRange(newRow, 7).setValue(comment);
     }
     
-    console.log(`作業記録を追加しました: ASIN=${asin}, 購入日=${purchaseDate}, ステータス=${status}, 時刻=${timestamp}, 数量=${quantity}, 原因=${reason}, コメント=${comment}`);
+    // 注文番号が指定されている場合は追加
+    if (orderNumber !== null && orderNumber !== '') {
+      this.sheet.getRange(newRow, 8).setValue(orderNumber);
+    }
+    
+    console.log(`作業記録を追加しました: ASIN=${asin}, 購入日=${purchaseDate}, ステータス=${status}, 時刻=${timestamp}, 数量=${quantity}, 原因=${reason}, コメント=${comment}, 注文番号=${orderNumber}`);
   }
 
   /**
-   * 納品プラン作成時のサマリを（右に2列ずらして）K-N 列に追記する
+   * 納品プラン作成時のサマリを（右に2列ずらして）K-O 列に追記する
    * - K: プラン作成日（今日の日付）
    * - L: 納品プラン（linkがあればHYPERLINK）
    * - M: ASIN
    * - N: 数量
+   * - O: 注文番号
    * @param {{inboundPlanId?: string, link?: string}} planResult
-   * @param {Array<{asin: string, quantity: number}>} asinQuantities
+   * @param {Array<{asin: string, quantity: number, orderNumber?: string}>} asinRecords
    */
-  appendInboundPlanSummary(planResult, asinQuantities) {
+  appendInboundPlanSummary(planResult, asinRecords) {
     const inboundPlanId = String((planResult && planResult.inboundPlanId) || '').trim();
     const link = String((planResult && planResult.link) || '').trim();
-    const rows = Array.isArray(asinQuantities) ? asinQuantities : [];
+    const rows = Array.isArray(asinRecords) ? asinRecords : [];
     if (rows.length === 0) return;
 
     // L列の「最後に値が入っている行」を基準に追記する
@@ -70,6 +76,7 @@ class WorkRecordSheet extends BaseSheet {
     for (const r of rows) {
       const asin = String((r && r.asin) || '').trim();
       const qty = Number((r && r.quantity) || 0);
+      const orderNo = String((r && r.orderNumber) || '').trim();
       if (!asin || !qty || qty <= 0) continue;
 
       // K列: 今日の日付（プラン作成日）
@@ -86,6 +93,11 @@ class WorkRecordSheet extends BaseSheet {
       // M-N列: ASIN, 数量
       this.sheet.getRange(newRow, 13).setValue(asin);
       this.sheet.getRange(newRow, 14).setValue(qty);
+
+      // O列: 注文番号
+      if (orderNo) {
+        this.sheet.getRange(newRow, 15).setValue(orderNo);
+      }
 
       newRow++;
     }
