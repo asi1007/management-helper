@@ -6,8 +6,21 @@ class WorkRecordSheet extends BaseSheet {
   }
 
   appendRecord(asin, purchaseDate, status, timestamp, quantity = null, reason = null, comment = null, orderNumber = null) {
-    const lastRow = this.sheet.getLastRow();
-    const newRow = lastRow + 1;
+    // A列の最後に値が入っている行を基準にする（納品プラン記録の行を除外）
+    const maxRow = this.sheet.getLastRow();
+    let lastA = 0;
+    if (maxRow > 0) {
+      const aValues = this.sheet.getRange(1, 1, maxRow, 1).getValues(); // A1:AmaxRow
+      for (let i = aValues.length - 1; i >= 0; i--) {
+        const v = aValues[i][0];
+        if (v !== '' && v !== null && v !== undefined) {
+          lastA = i + 1; // 1-based row
+          break;
+        }
+      }
+    }
+    // ヘッダー行を潰さないため、最低でも2行目以降に書く
+    const newRow = Math.max(2, lastA + 1);
     
     // ASIN, 購入日, ステータス, 時刻の順で記入
     this.sheet.getRange(newRow, 1).setValue(asin);
