@@ -246,12 +246,17 @@ function _processDefectRecord(quantity, reasonIndex, comment) {
   // 仕入管理シートの購入数を不良数分減らす
   const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   purchaseSheet.filter("行番号", rowNumbers);
-  
+
   if (purchaseSheet.data.length === 0) {
     throw new Error('仕入管理シートに対応する行が見つかりません。');
   }
-  
-  purchaseSheet.decreasePurchaseQuantity(quantity);
+
+  const zeroQuantityRows = purchaseSheet.decreasePurchaseQuantity(quantity);
+
+  // 購入数が0になった行を削除
+  if (zeroQuantityRows.length > 0) {
+    purchaseSheet.deleteRows(zeroQuantityRows);
+  }
   
   // 作業記録に登録
   const workRecordSheet = new WorkRecordSheet(config.WORK_RECORD_SHEET_NAME);
