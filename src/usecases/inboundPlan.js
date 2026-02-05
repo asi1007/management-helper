@@ -10,17 +10,19 @@ function createInboundPlanForRows(sheet, accessToken) {
   const planResult = planCreator.createPlan(items);
   
   sheet.writePlanResult(planResult);
-  _recordInboundPlanToWorkRecord_(planResult, items);
+  _recordInboundPlanToWorkRecord_(planResult, items, sheet.data);
   return planResult;
 }
 
-function _recordInboundPlanToWorkRecord_(planResult, items) {
+function _recordInboundPlanToWorkRecord_(planResult, items, sourceRows) {
   const config = getEnvConfig();
   const sheetName = config.WORK_RECORD_SHEET_NAME;
   if (!sheetName) return;
 
-  // ASINごとに数量を集計（itemsは SKU でまとまっているが、ASINは同一想定）
+  // ASINごとに数量を集計 + 注文番号を収集（itemsは SKU でまとまっているが、ASINは同一想定）
   const qtyByAsin = new Map();
+  const orderNumbersByAsin = new Map();
+  
   for (const item of (items || [])) {
     const asin = String((item && item.asin) || '').trim();
     const qty = Number((item && item.quantity) || 0);
@@ -28,12 +30,35 @@ function _recordInboundPlanToWorkRecord_(planResult, items) {
     qtyByAsin.set(asin, (qtyByAsin.get(asin) || 0) + qty);
   }
 
-  const asinQuantities = Array.from(qtyByAsin.entries()).map(([asin, quantity]) => ({ asin, quantity }));
-  if (asinQuantities.length === 0) return;
+  // 元の行データから注文番号を収集（ASIN単位で複数ある場合はカンマ区切りで結合）
+  for (const row of (sourceRows || [])) {
+    let asin = '';
+    let orderNo = '';
+    try { asin = String(row.get("ASIN") || '').trim(); } catch (e) {}
+    try { orderNo = String(row.get("注文番号") || '').trim(); } catch (e) {}
+    
+    if (!asin || !orderNo) continue;
+    
+    if (!orderNumbersByAsin.has(asin)) {
+      orderNumbersByAsin.set(asin, []);
+    }
+    const existing = orderNumbersByAsin.get(asin);
+    if (!existing.includes(orderNo)) {
+      existing.push(orderNo);
+    }
+  }
+
+  const asinRecords = Array.from(qtyByAsin.entries()).map(([asin, quantity]) => ({
+    asin,
+    quantity,
+    orderNumber: (orderNumbersByAsin.get(asin) || []).join(', ')
+  }));
+  
+  if (asinRecords.length === 0) return;
 
   const workRecord = new WorkRecordSheet(sheetName);
-  workRecord.appendInboundPlanSummary(planResult, asinQuantities);
-  console.log(`[作業記録] 納品プラン記録: rows=${asinQuantities.length}, inboundPlanId=${planResult && planResult.inboundPlanId ? planResult.inboundPlanId : ''}`);
+  workRecord.appendInboundPlanSummary(planResult, asinRecords);
+  console.log(`[作業記録] 納品プラン記録: rows=${asinRecords.length}, inboundPlanId=${planResult && planResult.inboundPlanId ? planResult.inboundPlanId : ''}`);
 }
 
 function createInboundPlanFromActiveRows() {
@@ -67,7 +92,7 @@ function createInboundPlanFromActiveRowsWithPlacementSelection() {
   const creator = new InboundPlanCreator(accessToken);
   const planResult = creator.createPlan(items);
   sheet.writePlanResult(planResult);
-  _recordInboundPlanToWorkRecord_(planResult, items);
+  _recordInboundPlanToWorkRecord_(planResult, items, sheet.data);
 
   // 1.5 プラン作成完了待機（placementOptions生成の前に確実に完了させる）
   creator.waitInboundPlanCreation(planResult.operationId);
