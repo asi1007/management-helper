@@ -140,16 +140,37 @@ class PurchaseSheet extends BaseSheet {
   decreasePurchaseQuantity(quantity) {
     const quantityColumnIndex = this._getColumnIndexByName('購入数');
     let successCount = 0;
-    
+    const zeroQuantityRows = [];
+
     for (const rowNum of this.rowNumbers) {
       const currentQuantity = Number(this.sheet.getRange(rowNum, quantityColumnIndex + 1).getValue());
       const newQuantity = Math.max(0, currentQuantity - quantity);
       this.sheet.getRange(rowNum, quantityColumnIndex + 1).setValue(newQuantity);
       successCount++;
       console.log(`行${rowNum}: 購入数を${currentQuantity}から${newQuantity}に減らしました`);
+
+      if (newQuantity === 0) {
+        zeroQuantityRows.push(rowNum);
+      }
     }
-    
+
     console.log(`${successCount}行の購入数を${quantity}減らしました`);
+    return zeroQuantityRows;
+  }
+
+  deleteRows(rowNumbers) {
+    if (!rowNumbers || rowNumbers.length === 0) {
+      return;
+    }
+
+    const sortedRows = rowNumbers.slice().sort((a, b) => b - a);
+
+    for (const rowNum of sortedRows) {
+      this.sheet.deleteRow(rowNum);
+      console.log(`行${rowNum}を削除しました`);
+    }
+
+    console.log(`${sortedRows.length}行を削除しました`);
   }
 
   /**
