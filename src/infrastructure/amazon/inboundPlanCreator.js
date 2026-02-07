@@ -58,7 +58,7 @@ class InboundPlanCreator{
     const sid = String(shipmentId || '').trim();
     if (!sid) throw new Error('shipmentId が空です');
 
-    const url = `${this.LEGACY_INBOUND_V0_BASE_URL}/shipments?ShipmentIdList.Id.1=${encodeURIComponent(sid)}&QueryType=SHIPMENT&MarketplaceId=${DEFAULT_MARKETPLACE_ID}`;
+    const url = `${this.LEGACY_INBOUND_V0_BASE_URL}/shipments?ShipmentIdList=${encodeURIComponent(sid)}&QueryType=SHIPMENT&MarketplaceId=${DEFAULT_MARKETPLACE_ID}`;
     const json = this._requestJson_(url, 'get');
     console.log(`[ShipmentStatus] shipmentId=${sid} raw=${JSON.stringify(json)}`);
 

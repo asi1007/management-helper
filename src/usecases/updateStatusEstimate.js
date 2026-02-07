@@ -88,10 +88,9 @@ function updateStatusEstimateFromInboundPlans() {
     const totals = _sumQuantitiesForSku_(items, sku);
 
     let estimate = '納品中';
-    if (totals.shipped > 0 && totals.received >= totals.shipped) {
-      estimate = '在庫あり';
-    } else if (totals.shipped > 0 && totals.received > 0 && totals.received < totals.shipped) {
-      estimate = '納品中';
+    if (totals.shipped > 0 && totals.received > 0) {
+      const diff = (totals.shipped - totals.received) / totals.shipped;
+      estimate = diff <= 0.1 ? '在庫あり' : '納品中';
     }
 
     sheet.writeCell(rowNum, estimateCol, estimate);
