@@ -181,6 +181,33 @@ class InboundPlanCreator{
   }
 
   /**
+   * shipmentId から直接 items を取得して、QuantityShipped/Received の合計を返す
+   * @param {string} shipmentId
+   * @returns {{quantityShipped:number, quantityReceived:number}}
+   */
+  getShipmentQuantityTotals(shipmentId) {
+    const sid = String(shipmentId || '').trim();
+    if (!sid) throw new Error('shipmentId が空です');
+
+    const items = this.getShipmentItems(sid);
+    let shipped = 0;
+    let received = 0;
+    for (const it of (items || [])) {
+      const qS = Number(
+        (it && (it.quantityShipped ?? it.QuantityShipped ?? it.quantity_shipped)) || 0
+      );
+      const qR = Number(
+        (it && (it.quantityReceived ?? it.QuantityReceived ?? it.quantity_received)) || 0
+      );
+      if (qS) shipped += qS;
+      if (qR) received += qR;
+    }
+
+    console.log(`[InboundItems] shipment totals: shipmentId=${sid} shipped=${shipped} received=${received}`);
+    return { quantityShipped: shipped, quantityReceived: received };
+  }
+
+  /**
    * placementOptions のログ表示用に、できるだけ壊れない概要を作る
    * @param {any} option
    * @returns {Object}
