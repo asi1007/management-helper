@@ -3,7 +3,8 @@
 /**
  * 仕入管理シートの「ステータス推測値=納品中」行について、
  * 納品プラン列の値（shipmentId or inboundPlanId）から
- * QuantityShipped / QuantityReceived を取得し、ステータス推測値を更新する。
+ * 該当行のSKUに一致するitemのみの QuantityShipped / QuantityReceived で判定し、
+ * ステータス推測値を更新する。
  *
  * ルール:
  * - QuantityReceived >= QuantityShipped -> 在庫あり
@@ -22,13 +23,20 @@ function updateStatusEstimateFromInboundPlans() {
   const planCol = sheet._getColumnIndexByName('納品プラン') + 1;
   const estimateCol = 101; // CW列（1-indexed）
 
-  const totalsCache = new Map();
+  const itemsCache = new Map(); // id.value -> items[]
   let updated = 0;
   let skipped = 0;
 
   for (const row of sheet.data) {
     const rowNum = row && row.rowNumber ? row.rowNumber : null;
     if (!rowNum) continue;
+
+    const sku = String(row.get('SKU') || '').trim();
+    if (!sku) {
+      console.warn(`[推測ステータス] SKUが空のためスキップ: row=${rowNum}`);
+      skipped++;
+      continue;
+    }
 
     const r = sheet.sheet.getRange(rowNum, planCol);
     const id = _extractPlanIdentifierFromCell_(r);
@@ -38,38 +46,84 @@ function updateStatusEstimateFromInboundPlans() {
       continue;
     }
 
-    let totals = totalsCache.get(id.value);
-    if (!totals) {
+    // shipmentId/inboundPlanId ごとに items をキャッシュ
+    let items = itemsCache.get(id.value);
+    if (!items) {
       try {
         if (id.type === 'shipmentId') {
-          totals = creator.getShipmentQuantityTotals(id.value);
+          items = creator.getShipmentItems(id.value);
         } else {
-          totals = creator.getPlanQuantityTotals(id.value);
+          items = _getAllItemsForPlan_(creator, id.value);
         }
-        totalsCache.set(id.value, totals);
+        itemsCache.set(id.value, items);
       } catch (e) {
-        console.warn(`[推測ステータス] 数量取得に失敗: ${id.type}=${id.value}, row=${rowNum}, error=${String(e && e.message || e)}`);
+        console.warn(`[推測ステータス] items取得に失敗: ${id.type}=${id.value}, row=${rowNum}, error=${String(e && e.message || e)}`);
         skipped++;
         continue;
       }
     }
 
-    const shipped = Number((totals && totals.quantityShipped) || 0);
-    const received = Number((totals && totals.quantityReceived) || 0);
+    // 該当行のSKUに一致するitemだけで集計
+    const totals = _sumQuantitiesForSku_(items, sku);
 
     let estimate = '納品中';
-    if (shipped > 0 && received >= shipped) {
+    if (totals.shipped > 0 && totals.received >= totals.shipped) {
       estimate = '在庫あり';
-    } else if (shipped > 0 && received > 0 && received < shipped) {
+    } else if (totals.shipped > 0 && totals.received > 0 && totals.received < totals.shipped) {
       estimate = '納品中';
     }
 
     sheet.writeCell(rowNum, estimateCol, estimate);
-    console.log(`[推測ステータス] row=${rowNum} ${id.type}=${id.value} shipped=${shipped} received=${received} -> ${estimate}`);
+    console.log(`[推測ステータス] row=${rowNum} sku=${sku} ${id.type}=${id.value} shipped=${totals.shipped} received=${totals.received} matched=${totals.matchedCount}/${(items || []).length} -> ${estimate}`);
     updated++;
   }
 
-  console.log(`[推測ステータス] 完了: updated=${updated}, skipped=${skipped}, cached=${totalsCache.size}`);
+  console.log(`[推測ステータス] 完了: updated=${updated}, skipped=${skipped}, cached=${itemsCache.size}`);
+}
+
+/**
+ * inboundPlanId 配下の全shipmentのitemsを結合して返す
+ */
+function _getAllItemsForPlan_(creator, inboundPlanId) {
+  const shipments = creator.listShipments(inboundPlanId);
+  const shipmentIds = (shipments || []).map(s => s && s.shipmentId ? String(s.shipmentId) : '').filter(Boolean);
+  if (shipmentIds.length === 0) {
+    console.warn(`[推測ステータス] shipmentsなし: inboundPlanId=${inboundPlanId}`);
+    return [];
+  }
+  let allItems = [];
+  for (const sid of shipmentIds) {
+    const items = creator.getShipmentItems(sid);
+    allItems = allItems.concat(items || []);
+  }
+  return allItems;
+}
+
+/**
+ * items配列からSKUに一致するもののみ QuantityShipped / QuantityReceived を集計する。
+ * APIバージョンによってフィールド名が異なるため複数候補を試す。
+ */
+function _sumQuantitiesForSku_(items, sku) {
+  let shipped = 0;
+  let received = 0;
+  let matchedCount = 0;
+
+  for (const it of (items || [])) {
+    if (!it) continue;
+    const itemSku = String(
+      it.msku ?? it.sellerSku ?? it.SellerSKU ?? it.seller_sku ?? it.merchantSku ?? ''
+    ).trim();
+    if (itemSku !== sku) continue;
+
+    matchedCount++;
+    const qS = Number((it.quantityShipped ?? it.QuantityShipped ?? it.quantity_shipped) || 0);
+    const qR = Number((it.quantityReceived ?? it.QuantityReceived ?? it.quantity_received) || 0);
+    console.log(`[推測ステータス][item] sku=${sku} shipped=${qS} received=${qR} raw=${JSON.stringify(it)}`);
+    if (qS) shipped += qS;
+    if (qR) received += qR;
+  }
+
+  return { shipped, received, matchedCount };
 }
 
 /**
