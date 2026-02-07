@@ -17,7 +17,7 @@ function updateStatusEstimateFromInboundPlans() {
   const creator = new InboundPlanCreator(accessToken);
 
   // 対象: 元ステータスが「納品中」
-  sheet.filter('ステータス', ['納品中']);
+  sheet.filter('ステータス推測値', ['納品中']);
 
   const planCol = sheet._getColumnIndexByName('納品プラン') + 1;
   const estimateCol = 101; // CW列（1-indexed）

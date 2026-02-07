@@ -1,4 +1,4 @@
-/* exported recordWorkStart, recordWorkEnd, recordDefect, processDefectRecord */
+/* exported recordWorkStart, recordWorkEnd, recordDefect */
 
 function recordWorkStart() {
   const { config } = getConfigSettingAndToken();
@@ -68,27 +68,28 @@ function recordWorkEnd() {
 
 function recordDefect() {
   const config = getEnvConfig();
-  
+  const ui = SpreadsheetApp.getUi();
+
   // 1. 自宅発送シートのS列から不良原因リストを読み込み
   const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
   const defectReasonList = homeSheet.getDefectReasonList();
-  
+
   if (defectReasonList.length === 0) {
-    Browser.msgBox('エラー', '不良原因リストが見つかりません。自宅発送シートのS列に不良原因を入力してください。', Browser.Buttons.OK);
+    ui.alert('エラー', '不良原因リストが見つかりません。自宅発送シートのS列に不良原因を入力してください。', ui.ButtonSet.OK);
     return;
   }
-  
+
   // 2. 該当行の行番号を取得
   const activeData = homeSheet.getActiveRowData();
   if (activeData.length === 0) {
-    Browser.msgBox('エラー', '選択された行がありません。', Browser.Buttons.OK);
+    ui.alert('エラー', '選択された行がありません。', ui.ButtonSet.OK);
     return;
   }
-  
+
   // BaseRow(row) から直接、実シート上の行番号を取得する
   const rowNumbers = activeData.map(row => row.rowNumber).filter(rn => rn !== null && rn !== undefined && rn !== '');
   if (rowNumbers.length === 0) {
-    Browser.msgBox('エラー', '選択された行に有効な行番号がありません。', Browser.Buttons.OK);
+    ui.alert('エラー', '選択された行に有効な行番号がありません。', ui.ButtonSet.OK);
     return;
   }
 
@@ -105,173 +106,47 @@ function recordDefect() {
     };
   }).filter(info => info.purchaseRowNumber);
 
-  // PropertiesServiceに行情報を保存（HTMLから渡す代わりに）
-  PropertiesService.getScriptProperties().setProperty('defectRowInfo', JSON.stringify(rowInfo));
-
-  // 3. HTMLフォームを表示して不良数、原因、コメントを入力
-  const htmlOutput = HtmlService.createHtmlOutput(_getDefectFormHtml(defectReasonList))
-    .setWidth(500)
-    .setHeight(400);
-  
-  const ui = SpreadsheetApp.getUi();
-  ui.showModalDialog(htmlOutput, '不良品登録');
-  
-  // フォームの結果はクライアント側からサーバー側の関数を呼び出す必要があるため、
-  // フォーム送信時に直接処理するように変更
-}
-
-function _getDefectFormHtml(defectReasonList) {
-  const reasonOptions = defectReasonList.map((reason, index) =>
-    `<option value="${index}">${reason}</option>`
-  ).join('');
-
-  return `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <base target="_top">
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-          }
-          .form-group {
-            margin-bottom: 15px;
-          }
-          label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-          }
-          input[type="number"], select, textarea {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-            font-size: 14px;
-          }
-          textarea {
-            height: 80px;
-            resize: vertical;
-          }
-          .button-group {
-            margin-top: 20px;
-            text-align: right;
-          }
-          button {
-            padding: 10px 20px;
-            margin-left: 10px;
-            font-size: 14px;
-            cursor: pointer;
-          }
-          .btn-primary {
-            background-color: #4285f4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-          }
-          .btn-secondary {
-            background-color: #f1f1f1;
-            color: #333;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-          }
-          .btn-primary:hover {
-            background-color: #357ae8;
-          }
-          .btn-secondary:hover {
-            background-color: #e0e0e0;
-          }
-        </style>
-      </head>
-      <body>
-        <form id="defectForm">
-          <div class="form-group">
-            <label for="quantity">不良数 *</label>
-            <input type="number" id="quantity" name="quantity" min="1" required>
-          </div>
-          <div class="form-group">
-            <label for="reason">原因 *</label>
-            <select id="reason" name="reason" required>
-              <option value="">選択してください</option>
-              ${reasonOptions}
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="comment">コメント（任意）</label>
-            <textarea id="comment" name="comment" placeholder="コメントを入力してください"></textarea>
-          </div>
-          <div class="button-group">
-            <button type="button" class="btn-secondary" onclick="google.script.host.close()">キャンセル</button>
-            <button type="submit" class="btn-primary">登録</button>
-          </div>
-        </form>
-        <script>
-          document.getElementById('defectForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const quantity = parseInt(document.getElementById('quantity').value);
-            const reasonIndex = parseInt(document.getElementById('reason').value);
-            const comment = document.getElementById('comment').value;
-
-            if (isNaN(quantity) || quantity <= 0) {
-              alert('有効な不良数を入力してください。');
-              return;
-            }
-
-            if (reasonIndex === '' || isNaN(reasonIndex)) {
-              alert('原因を選択してください。');
-              return;
-            }
-
-            google.script.run
-              .withSuccessHandler(function(message) {
-                alert(message || '不良品登録を完了しました。');
-                google.script.host.close();
-              })
-              .withFailureHandler(function(error) {
-                alert('エラーが発生しました: ' + error.message);
-              })
-              .processDefectRecord(quantity, reasonIndex, comment);
-          });
-        </script>
-      </body>
-    </html>
-  `;
-}
-
-function processDefectRecord(quantity, reasonIndex, comment) {
-  const config = getEnvConfig();
-
-  // 自宅発送シートのS列から不良原因リストを読み込み
-  const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
-  const defectReasonList = homeSheet.getDefectReasonList();
-
-  if (reasonIndex < 0 || reasonIndex >= defectReasonList.length) {
-    throw new Error('無効な原因が選択されました。');
+  // 3. 不良数を入力
+  const quantityResponse = ui.prompt('不良品登録', '不良数を入力してください:', ui.ButtonSet.OK_CANCEL);
+  if (quantityResponse.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+  const quantity = parseInt(quantityResponse.getResponseText());
+  if (isNaN(quantity) || quantity <= 0) {
+    ui.alert('エラー', '有効な不良数を入力してください。', ui.ButtonSet.OK);
+    return;
   }
 
+  // 4. 原因を選択（番号で入力）
+  const reasonList = defectReasonList.map((r, i) => `${i + 1}: ${r}`).join('\n');
+  const reasonResponse = ui.prompt('不良品登録', `原因を番号で選択してください:\n${reasonList}`, ui.ButtonSet.OK_CANCEL);
+  if (reasonResponse.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+  const reasonIndex = parseInt(reasonResponse.getResponseText()) - 1;
+  if (isNaN(reasonIndex) || reasonIndex < 0 || reasonIndex >= defectReasonList.length) {
+    ui.alert('エラー', '有効な番号を入力してください。', ui.ButtonSet.OK);
+    return;
+  }
   const selectedReason = defectReasonList[reasonIndex];
 
-  // PropertiesServiceから行情報を読み取る
-  const rowInfoJson = PropertiesService.getScriptProperties().getProperty('defectRowInfo');
-  if (!rowInfoJson) {
-    throw new Error('行情報が見つかりません。再度不良品登録ボタンを押してください。');
+  // 5. コメント（任意）
+  const commentResponse = ui.prompt('不良品登録', 'コメント（任意、空欄可）:', ui.ButtonSet.OK_CANCEL);
+  if (commentResponse.getSelectedButton() !== ui.Button.OK) {
+    return;
   }
-  const rowInfo = JSON.parse(rowInfoJson);
-  if (!rowInfo || rowInfo.length === 0) {
-    throw new Error('行情報が渡されていません。');
-  }
+  const comment = commentResponse.getResponseText() || null;
 
-  const rowNumbers = rowInfo.map(info => info.purchaseRowNumber).filter(rn => rn !== null && rn !== undefined && rn !== '');
-  if (rowNumbers.length === 0) {
-    throw new Error('選択された行に有効な行番号がありません。');
-  }
+  // 6. 処理実行
+  const purchaseRowNumbers = rowInfo.map(info => info.purchaseRowNumber);
 
   // 仕入管理シートの購入数を不良数分減らす
   const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
-  purchaseSheet.filter("行番号", rowNumbers);
+  purchaseSheet.filter("行番号", purchaseRowNumbers);
 
   if (purchaseSheet.data.length === 0) {
-    throw new Error('仕入管理シートに対応する行が見つかりません。');
+    ui.alert('エラー', '仕入管理シートに対応する行が見つかりません。', ui.ButtonSet.OK);
+    return;
   }
 
   const zeroQuantityRows = purchaseSheet.decreasePurchaseQuantity(quantity);
@@ -289,17 +164,15 @@ function processDefectRecord(quantity, reasonIndex, comment) {
     const asin = info.asin;
     const purchaseDate = info.purchaseDate;
     const orderNumber = info.orderNumber || '';
-    
+
     if (!asin) {
       console.warn(`ASINが空の行をスキップしました`);
       continue;
     }
-    
-    // ステータスは「不良」のみを記録し、原因とコメントは別の列に記録
-    workRecordSheet.appendRecord(asin, purchaseDate, "不良", timestamp, quantity, selectedReason, comment || null, orderNumber);
-  }
-  
-  console.log(`${rowInfo.length}件の不良品記録を追加しました`);
-  return `不良品登録を完了しました。\n不良数: ${quantity}\n原因: ${selectedReason}`;
-}
 
+    workRecordSheet.appendRecord(asin, purchaseDate, "不良", timestamp, quantity, selectedReason, comment, orderNumber);
+  }
+
+  console.log(`${rowInfo.length}件の不良品記録を追加しました`);
+  ui.alert('完了', `不良品登録を完了しました。\n不良数: ${quantity}\n原因: ${selectedReason}`, ui.ButtonSet.OK);
+}
