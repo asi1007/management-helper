@@ -85,8 +85,22 @@ const sku = rows[0].get('SKU');         // 列名でアクセス
 ### 環境設定
 `src/shared/utilities.js`の`getConfig()`で環境変数を取得。機密情報はPropertiesServiceまたは.envから読み込み。
 
+## 主要なデータフロー
+
+### ラベル生成フロー (`generateLabelsAndInstructions()`)
+仕入管理シートの選択行 → SKU/FNSKU補完（SP-API） → SKU集計（LabelAggregator） → ラベルPDFダウンロード → 指示書作成（テンプレートコピー＋Keepa画像）→ リンクをシートに書き戻し
+
+### ステータス推測値の更新フロー
+- `updateStatusEstimateFromInboundPlans()`: ステータス「納品中」の行に対し、SP-APIからquantityShipped/Receivedを取得し、CW列（101列目）に推測値を書き込み
+- `updateInventoryEstimateFromStockSheet()`: ステータス「在庫あり」の行に対し、stockシートのASIN別在庫から在庫数推測値を計算。在庫0なら「在庫無し」に更新
+
+### 不良品登録フロー (`recordDefect()`)
+自宅発送シートの選択行 → UI入力（数量・理由・コメント）→ 対応する仕入管理行の購入数を減算 → 数量0なら行削除 → 作業記録に追記
+
 ## 注意事項
 
-- GAS環境はES5レベル。`let`/`const`は使用可能だが、一部のモダンJS機能は制限あり
+- GAS V8ランタイム。`let`/`const`/`class`/`Map`/アロー関数は使用可能だが、top-level `await`やimport/exportは不可
 - ファイルの読み込み順序は`.clasp.json`の`filePushOrder`で制御（utilities.jsが先頭）
+- `/* exported ClassName */`コメントでGAS環境へのクラス公開を宣言
 - Amazon SP-APIのレート制限に注意（特に納品プラン作成時）
+- 列番号はSettingSheetで動的管理されるが、一部（CW列=101等）はハードコードされている
