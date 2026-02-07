@@ -50,6 +50,28 @@ class InboundPlanCreator{
   }
 
   /**
+   * shipmentId からステータスを取得する（v0 API）
+   * @param {string} shipmentId
+   * @returns {string} shipmentStatus (WORKING, SHIPPED, IN_TRANSIT, RECEIVING, CLOSED, etc.)
+   */
+  getShipmentStatus(shipmentId) {
+    const sid = String(shipmentId || '').trim();
+    if (!sid) throw new Error('shipmentId が空です');
+
+    const url = `${this.LEGACY_INBOUND_V0_BASE_URL}/shipments?ShipmentIdList.Id.1=${encodeURIComponent(sid)}&QueryType=SHIPMENT&MarketplaceId=${DEFAULT_MARKETPLACE_ID}`;
+    const json = this._requestJson_(url, 'get');
+    console.log(`[ShipmentStatus] shipmentId=${sid} raw=${JSON.stringify(json)}`);
+
+    const shipments = (json.payload && json.payload.ShipmentData) || [];
+    for (const s of shipments) {
+      if (String(s.ShipmentId || '') === sid) {
+        return String(s.ShipmentStatus || '');
+      }
+    }
+    return '';
+  }
+
+  /**
    * Shipment の items を取得する（QuantityShipped / QuantityReceived を含むことを期待）
    * まず 2024-03-20 のパスを試し、失敗したら v0 にフォールバックする。
    * @param {string} shipmentId
