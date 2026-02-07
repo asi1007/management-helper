@@ -24,6 +24,7 @@ function updateStatusEstimateFromInboundPlans() {
   const estimateCol = 101; // CW列（1-indexed）
 
   const itemsCache = new Map(); // id.value -> items[]
+  const statusCache = new Map(); // shipmentId -> shipmentStatus
   let updated = 0;
   let skipped = 0;
 
@@ -43,6 +44,26 @@ function updateStatusEstimateFromInboundPlans() {
     if (!id.value) {
       console.warn(`[推測ステータス] 納品プラン列が空のためスキップ: row=${rowNum}`);
       skipped++;
+      continue;
+    }
+
+    // shipmentステータスを取得（shipmentIdの場合のみ）
+    if (id.type === 'shipmentId' && !statusCache.has(id.value)) {
+      try {
+        const status = creator.getShipmentStatus(id.value);
+        statusCache.set(id.value, status);
+      } catch (e) {
+        console.warn(`[推測ステータス] shipmentStatus取得に失敗: shipmentId=${id.value}, row=${rowNum}, error=${String(e && e.message || e)}`);
+        statusCache.set(id.value, '');
+      }
+    }
+
+    // CLOSEDなら在庫ありと判定
+    const shipmentStatus = statusCache.get(id.value) || '';
+    if (shipmentStatus === 'CLOSED') {
+      sheet.writeCell(rowNum, estimateCol, '在庫あり');
+      console.log(`[推測ステータス] row=${rowNum} sku=${sku} shipmentId=${id.value} shipmentStatus=CLOSED -> 在庫あり`);
+      updated++;
       continue;
     }
 
@@ -74,7 +95,7 @@ function updateStatusEstimateFromInboundPlans() {
     }
 
     sheet.writeCell(rowNum, estimateCol, estimate);
-    console.log(`[推測ステータス] row=${rowNum} sku=${sku} ${id.type}=${id.value} shipped=${totals.shipped} received=${totals.received} matched=${totals.matchedCount}/${(items || []).length} -> ${estimate}`);
+    console.log(`[推測ステータス] row=${rowNum} sku=${sku} ${id.type}=${id.value} shipmentStatus=${shipmentStatus || 'N/A'} shipped=${totals.shipped} received=${totals.received} matched=${totals.matchedCount}/${(items || []).length} -> ${estimate}`);
     updated++;
   }
 
