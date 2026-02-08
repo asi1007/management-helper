@@ -23,7 +23,8 @@ class BaseRow extends Array {
    */
   get(columnName) {
     const idx = this._columnIndexResolver(columnName);
-    return this[idx];
+    const v = this[idx];
+    return typeof v === 'string' ? v.trim() : v;
   }
 }
 

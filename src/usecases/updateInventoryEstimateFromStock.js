@@ -27,10 +27,9 @@ function updateInventoryEstimateFromStockSheet() {
   const groups = new Map(); // asin -> BaseRow[]
   const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
   for (const row of allRows) {
-    const asin = String(row.get(asinColName) || '').trim();
+    const asin = row.get(asinColName);
     if (!asin) continue;
-    const status = String(row.get(statusColName) || '').trim();
-    // 更新対象: ステータスが在庫あり の行のみ
+    const status = row.get(statusColName);
     if (status !== '在庫あり') continue;
     if (!groups.has(asin)) groups.set(asin, []);
     groups.get(asin).push(row);
