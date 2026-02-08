@@ -1,12 +1,9 @@
 /* exported updateInventoryEstimateFromStockSheet */
 
 /**
- * stockシート:
- * - A列: ASIN
- * - C列: 販売可能在庫数
- *
+ * stockシートのヘッダー行から「ASIN」列と「販売可能」を含む列を特定し、
  * 仕入管理シート（PurchaseSheet）の各ASINについて、下の行から順に:
- * 1) 在庫数推測値 = max(購入数, 販売可能在庫数(temp))
+ * 1) 在庫数推測値 = min(購入数, 販売可能在庫数(temp))
  * 2) 販売可能在庫数(temp) = 販売可能在庫数(temp) - 在庫数推測値
  * 3) 在庫数推測値 == 0 のとき、ステータス推測値 = 在庫無し
  */
@@ -75,15 +72,28 @@ function _loadAsinToAvailableStockFromStockSheet_(sheetName) {
   if (!sheet) throw new Error(`stockシート "${sheetName}" が見つかりません`);
 
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return new Map();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return new Map();
 
-  // A〜C だけ読む（A:ASIN, C:販売可能在庫数）
-  const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  // 1行目のヘッダーからASIN列と販売可能列を特定
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  let asinCol = -1;
+  let availableCol = -1;
+  for (let i = 0; i < headers.length; i++) {
+    const h = String(headers[i] || '').trim();
+    if (h === 'ASIN' || h === 'asin') asinCol = i;
+    if (h.indexOf('販売可能') !== -1) availableCol = i;
+  }
+  if (asinCol === -1) throw new Error(`stockシートにASIN列が見つかりません。headers=${JSON.stringify(headers)}`);
+  if (availableCol === -1) throw new Error(`stockシートに販売可能列が見つかりません。headers=${JSON.stringify(headers)}`);
+  console.log(`[在庫推測] stockシート列: ASIN=${asinCol + 1}列目, 販売可能=${availableCol + 1}列目`);
+
+  const values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
   const map = new Map();
   for (const r of values) {
-    const asin = String(r[0] || '').trim();
+    const asin = String(r[asinCol] || '').trim();
     if (!asin) continue;
-    const available = Number(r[2] || 0);
+    const available = Number(r[availableCol] || 0);
     if (!isFinite(available)) continue;
     map.set(asin, available);
   }
