@@ -1,4 +1,4 @@
-/* exported updateInventoryEstimateFromStockSheet */
+/* exported updateInventoryEstimateFromStockSheet, updateStatusAndInventoryEstimate */
 
 /**
  * stockシートのヘッダー行から「ASIN」列と「販売可能」を含む列を特定し、
@@ -23,14 +23,23 @@ function updateInventoryEstimateFromStockSheet() {
   const invEstCol = purchase._getColumnIndexByName(invEstColName) + 1;
   const statusEstCol = purchase._getColumnIndexByName(statusEstColName) + 1;
 
-  // 全行をASINでグルーピングし、行番号降順（下から）で処理
+  // 「在庫あり」行をASINでグルーピング、それ以外は在庫数推測値をクリア
   const groups = new Map(); // asin -> BaseRow[]
   const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
+  let cleared = 0;
   for (const row of allRows) {
     const asin = row.get(asinColName);
     if (!asin) continue;
     const status = row.get(statusColName);
-    if (status !== '在庫あり') continue;
+    const statusEst = row.get(statusEstColName);
+    if (status !== '在庫あり' && statusEst !== '在庫あり') {
+      const existing = row.get(invEstColName);
+      if (existing !== '' && existing != null) {
+        purchase.writeCell(row.rowNumber, invEstCol, '');
+        cleared++;
+      }
+      continue;
+    }
     if (!groups.has(asin)) groups.set(asin, []);
     groups.get(asin).push(row);
   }
@@ -62,7 +71,13 @@ function updateInventoryEstimateFromStockSheet() {
     }
   }
 
-  console.log(`[在庫推測] 完了: written=${written}, statusChanged=${statusChanged}, asinsProcessed=${groups.size}`);
+  console.log(`[在庫推測] 完了: written=${written}, statusChanged=${statusChanged}, cleared=${cleared}, asinsProcessed=${groups.size}`);
+}
+
+/* exported updateStatusAndInventoryEstimate */
+function updateStatusAndInventoryEstimate() {
+  updateStatusEstimateFromInboundPlans();
+  updateInventoryEstimateFromStockSheet();
 }
 
 function _loadAsinToAvailableStockFromStockSheet_(sheetName) {
