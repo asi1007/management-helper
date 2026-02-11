@@ -22,6 +22,7 @@ function updateStatusEstimateFromInboundPlans() {
 
   const planCol = sheet._getColumnIndexByName('納品プラン') + 1;
   const estimateCol = 101; // CW列（1-indexed）
+  const receivedDateCol = sheet._getColumnIndexByName('受領日') + 1;
 
   const itemsCache = new Map(); // id.value -> items[]
   const statusCache = new Map(); // shipmentId -> shipmentStatus
@@ -62,6 +63,7 @@ function updateStatusEstimateFromInboundPlans() {
     const shipmentStatus = statusCache.get(id.value) || '';
     if (shipmentStatus === 'CLOSED') {
       sheet.writeCell(rowNum, estimateCol, '在庫あり');
+      sheet.writeCell(rowNum, receivedDateCol, new Date());
       console.log(`[推測ステータス] row=${rowNum} sku=${sku} shipmentId=${id.value} shipmentStatus=CLOSED -> 在庫あり`);
       updated++;
       continue;
@@ -94,6 +96,9 @@ function updateStatusEstimateFromInboundPlans() {
     }
 
     sheet.writeCell(rowNum, estimateCol, estimate);
+    if (estimate === '在庫あり') {
+      sheet.writeCell(rowNum, receivedDateCol, new Date());
+    }
     console.log(`[推測ステータス] row=${rowNum} sku=${sku} ${id.type}=${id.value} shipmentStatus=${shipmentStatus || 'N/A'} shipped=${totals.shipped} received=${totals.received} matched=${totals.matchedCount}/${(items || []).length} -> ${estimate}`);
     updated++;
   }
