@@ -1,4 +1,4 @@
-/* exported updateInventoryEstimateFromStockSheet, updateStatusAndInventoryEstimate, moveOutOfStockToArchive */
+/* exported updateInventoryEstimateFromStockSheet_, updateStatusAndInventoryEstimate_, moveOutOfStockToArchive_ */
 
 /**
  * stockシートのヘッダー行から「ASIN」列と「販売可能」を含む列を特定し、
@@ -7,7 +7,7 @@
  * 2) 販売可能在庫数(temp) = 販売可能在庫数(temp) - 在庫数推測値
  * 3) 在庫数推測値 == 0 のとき、ステータス推測値 = 在庫無し
  */
-function updateInventoryEstimateFromStockSheet() {
+function updateInventoryEstimateFromStockSheet_() {
   const config = getEnvConfig();
   const purchase = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
 
@@ -74,10 +74,10 @@ function updateInventoryEstimateFromStockSheet() {
   console.log(`[在庫推測] 完了: written=${written}, statusChanged=${statusChanged}, cleared=${cleared}, asinsProcessed=${groups.size}`);
 }
 
-function updateStatusAndInventoryEstimate() {
-  updateStatusEstimateFromInboundPlans();
-  updateInventoryEstimateFromStockSheet();
-  moveOutOfStockToArchive();
+function updateStatusAndInventoryEstimate_() {
+  updateStatusEstimateFromInboundPlans_();
+  updateInventoryEstimateFromStockSheet_();
+  moveOutOfStockToArchive_();
 }
 
 function _loadAsinToAvailableStockFromStockSheet_(sheetName) {
@@ -114,7 +114,7 @@ function _loadAsinToAvailableStockFromStockSheet_(sheetName) {
   return map;
 }
 
-function moveOutOfStockToArchive() {
+function moveOutOfStockToArchive_() {
   const config = getEnvConfig();
   const purchase = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
 

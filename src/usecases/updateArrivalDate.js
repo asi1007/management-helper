@@ -1,4 +1,4 @@
-function updateArrivalDate() {
+function updateArrivalDate_() {
   console.log('[updateArrivalDate] start');
   try {
     const config = getEnvConfig();

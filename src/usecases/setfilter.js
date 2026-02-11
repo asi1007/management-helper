@@ -1,4 +1,4 @@
-function chfilter() {
+function chfilter_() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
   // E2の値を取得

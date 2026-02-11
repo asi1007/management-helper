@@ -61,7 +61,7 @@ function _recordInboundPlanToWorkRecord_(planResult, items, sourceRows) {
   console.log(`[作業記録] 納品プラン記録: rows=${asinRecords.length}, inboundPlanId=${planResult && planResult.inboundPlanId ? planResult.inboundPlanId : ''}`);
 }
 
-function createInboundPlanFromActiveRows() {
+function createInboundPlanFromActiveRows_() {
   const config = getEnvConfig();
   const accessToken = getAuthToken();
 
@@ -76,7 +76,7 @@ function createInboundPlanFromActiveRows() {
  * 納品プラン作成後、Placement Options を生成→一覧をフォームで表示し、ユーザー選択で確定する。
  * - 候補概要と選択結果は services.js 側で毎回 console.log される
  */
-function createInboundPlanFromActiveRowsWithPlacementSelection() {
+function createInboundPlanFromActiveRowsWithPlacementSelection_() {
   const config = getEnvConfig();
   const accessToken = getAuthToken();
 
@@ -234,7 +234,7 @@ function _showPlacementOptionsDialog_(inboundPlanId, placementOptions) {
   SpreadsheetApp.getUi().showModalDialog(html, 'Placement Option選択');
 }
 
-function confirmPlacementOptionFromDialog(inboundPlanId, placementOptionId, allowPallet) {
+function confirmPlacementOptionFromDialog_(inboundPlanId, placementOptionId, allowPallet) {
   const accessToken = getAuthToken();
   const creator = new InboundPlanCreator(accessToken);
   if (!allowPallet) {

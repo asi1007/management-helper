@@ -10,7 +10,7 @@ function loadLabelPDF(labelItems, accessToken) {
 function createInspectionSheetAndWriteLink(sheet, data) {
   // 検品シート（詳細検品マスタにASINがある場合のみ）
   try {
-    const inspectionUrl = createInspectionSheetFromPurchaseRowsIfNeeded(data);
+    const inspectionUrl = createInspectionSheetFromPurchaseRowsIfNeeded_(data);
     if (inspectionUrl) {
       console.log(`検品シートを作成しました: ${inspectionUrl}`);
       // 仕入管理シート C2 に検品シートURLを記載
@@ -35,7 +35,7 @@ function createInstructionSheet(data) {
 }
 
 
-function generateLabelsAndInstructions() {
+function generateLabelsAndInstructions_() {
   const config = getEnvConfig();
   const accessToken = getAuthToken();
   const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);

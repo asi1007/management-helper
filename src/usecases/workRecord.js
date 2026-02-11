@@ -1,6 +1,6 @@
-/* exported recordWorkStart, recordWorkEnd, recordDefect */
+/* exported recordWorkStart_, recordWorkEnd_, recordDefect_ */
 
-function recordWorkStart() {
+function recordWorkStart_() {
   const { config } = getConfigSettingAndToken();
   
   // 自宅発送シートでアクティブな行のデータを取得
@@ -33,7 +33,7 @@ function recordWorkStart() {
   console.log(`${activeData.length}件の作業記録（開始）を追加しました`);
 }
 
-function recordWorkEnd() {
+function recordWorkEnd_() {
   const { config } = getConfigSettingAndToken();
   
   // 自宅発送シートでアクティブな行のデータを取得
@@ -66,7 +66,7 @@ function recordWorkEnd() {
   console.log(`${activeData.length}件の作業記録（終了）を追加しました`);
 }
 
-function recordDefect() {
+function recordDefect_() {
   const config = getEnvConfig();
   const ui = SpreadsheetApp.getUi();
 

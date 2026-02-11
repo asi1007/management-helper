@@ -1,4 +1,4 @@
-/* exported updateStatusEstimateFromInboundPlans */
+/* exported updateStatusEstimateFromInboundPlans_ */
 
 /**
  * 仕入管理シートの「ステータス推測値=納品中」行について、
@@ -11,7 +11,7 @@
  * - 0 < QuantityReceived < QuantityShipped -> 納品中
  * - それ以外は納品中（据え置き）
  */
-function updateStatusEstimateFromInboundPlans() {
+function updateStatusEstimateFromInboundPlans_() {
   const config = getEnvConfig();
   const accessToken = getAuthToken();
   const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);

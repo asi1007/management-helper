@@ -1,4 +1,4 @@
-function promptDeliveryQuantity() {
+function promptDeliveryQuantity_() {
   const config = getEnvConfig();
   const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
 
@@ -21,7 +21,7 @@ function promptDeliveryQuantity() {
   return deliveryQuantity;
 }
 
-function splitRow() {
+function splitRow_() {
   const config = getEnvConfig();
   
   // HomeShipmentSheetのアクティブ行の行番号列を取得
@@ -36,7 +36,7 @@ function splitRow() {
   const purchaseSheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   purchaseSheet.filter("行番号", rowNumbers);
   
-  const deliveryQuantity = promptDeliveryQuantity();
+  const deliveryQuantity = promptDeliveryQuantity_();
   if (deliveryQuantity === null) {
     return;
   }

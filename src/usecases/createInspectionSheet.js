@@ -1,6 +1,6 @@
-/* exported createInspectionSheetFromPurchaseRowsIfNeeded */
+/* exported createInspectionSheetFromPurchaseRowsIfNeeded_ */
 
-function createInspectionSheetFromPurchaseRowsIfNeeded(purchaseRows) {
+function createInspectionSheetFromPurchaseRowsIfNeeded_(purchaseRows) {
   const config = getEnvConfig();
   console.log(`[検品] createInspectionSheetFromPurchaseRowsIfNeeded: purchaseRows=${(purchaseRows || []).length}`);
   const asins = purchaseRows

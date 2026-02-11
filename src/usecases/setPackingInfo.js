@@ -1,4 +1,4 @@
-/* exported setPackingInfoFromActiveRow, submitPackingInfoFromDialog */
+/* exported setPackingInfoFromActiveRow_, submitPackingInfoFromDialog_ */
 
 function _parseCartonInput(inputText) {
   const lines = String(inputText || '').split('\n').filter(line => line.trim());
@@ -52,7 +52,7 @@ function _extractInboundPlanIdFromCell(cellValue) {
   throw new Error(`納品プランIDを特定できません: "${value}"`);
 }
 
-function setPackingInfoFromActiveRow() {
+function setPackingInfoFromActiveRow_() {
   const config = getEnvConfig();
   const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   sheet.getActiveRowData();
@@ -121,7 +121,7 @@ function _showPackingInfoDialog_(inboundPlanId) {
   SpreadsheetApp.getUi().showModalDialog(html, '荷物情報入力');
 }
 
-function submitPackingInfoFromDialog(inboundPlanId, cartonInputText) {
+function submitPackingInfoFromDialog_(inboundPlanId, cartonInputText) {
   const accessToken = getAuthToken();
   const creator = new InboundPlanCreator(accessToken);
 
