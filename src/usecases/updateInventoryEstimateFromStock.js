@@ -1,4 +1,4 @@
-/* exported updateInventoryEstimateFromStockSheet, updateStatusAndInventoryEstimate */
+/* exported updateInventoryEstimateFromStockSheet, updateStatusAndInventoryEstimate, moveOutOfStockToArchive */
 
 /**
  * stockシートのヘッダー行から「ASIN」列と「販売可能」を含む列を特定し、
@@ -74,10 +74,10 @@ function updateInventoryEstimateFromStockSheet() {
   console.log(`[在庫推測] 完了: written=${written}, statusChanged=${statusChanged}, cleared=${cleared}, asinsProcessed=${groups.size}`);
 }
 
-/* exported updateStatusAndInventoryEstimate */
 function updateStatusAndInventoryEstimate() {
   updateStatusEstimateFromInboundPlans();
   updateInventoryEstimateFromStockSheet();
+  moveOutOfStockToArchive();
 }
 
 function _loadAsinToAvailableStockFromStockSheet_(sheetName) {
@@ -114,3 +114,36 @@ function _loadAsinToAvailableStockFromStockSheet_(sheetName) {
   return map;
 }
 
+function moveOutOfStockToArchive() {
+  const config = getEnvConfig();
+  const purchase = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const archiveSheet = ss.getSheetByName('過去仕入れログ');
+  if (!archiveSheet) throw new Error('シート "過去仕入れログ" が見つかりません');
+
+  const statusColName = 'ステータス';
+  const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
+  const lastCol = purchase.sheet.getLastColumn();
+
+  const rowsToArchive = [];
+  for (const row of allRows) {
+    if (row.rowNumber < 6) continue;
+    if (row.get(statusColName) !== '在庫無し') continue;
+    rowsToArchive.push(row.rowNumber);
+  }
+
+  if (rowsToArchive.length === 0) {
+    console.log('[アーカイブ] 在庫無し行なし');
+    return;
+  }
+
+  for (const rowNum of rowsToArchive) {
+    const values = purchase.sheet.getRange(rowNum, 1, 1, lastCol).getValues()[0];
+    archiveSheet.appendRow(values);
+  }
+  console.log(`[アーカイブ] ${rowsToArchive.length}行を過去仕入れログにコピー`);
+
+  purchase.deleteRows(rowsToArchive);
+  console.log(`[アーカイブ] 完了: ${rowsToArchive.length}行を移動`);
+}
