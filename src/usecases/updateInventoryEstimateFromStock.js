@@ -22,22 +22,14 @@ function updateInventoryEstimateFromStockSheet_() {
   const invCol = purchase._getColumnIndexByName(invColName) + 1;
   const statusCol = purchase._getColumnIndexByName(statusColName) + 1;
 
-  // 「在庫あり」行をASINでグルーピング、それ以外は在庫数をクリア
+  // 「在庫あり」行をASINでグルーピング
   const groups = new Map(); // asin -> BaseRow[]
   const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
-  let cleared = 0;
   for (const row of allRows) {
     const asin = row.get(asinColName);
     if (!asin) continue;
     const status = row.get(statusColName);
-    if (status !== '在庫あり') {
-      const existing = row.get(invColName);
-      if (existing !== '' && existing != null) {
-        purchase.writeCell(row.rowNumber, invCol, '');
-        cleared++;
-      }
-      continue;
-    }
+    if (status !== '在庫あり') continue;
     if (!groups.has(asin)) groups.set(asin, []);
     groups.get(asin).push(row);
   }
@@ -55,12 +47,15 @@ function updateInventoryEstimateFromStockSheet_() {
       const purchaseQty = Number(row.get(qtyColName) || 0) || 0;
 
       const invEst = Math.min(purchaseQty, temp);
-      purchase.writeCell(rowNum, invCol, invEst);
-      written++;
-
       temp = Math.max(0, temp - invEst);
 
-      if (invEst === 0) {
+      const existingInv = Number(row.get(invColName) || 0) || 0;
+      if (invEst !== existingInv) {
+        purchase.writeCell(rowNum, invCol, invEst);
+        written++;
+      }
+
+      if (invEst === 0 && row.get(statusColName) !== '在庫無し') {
         purchase.writeCell(rowNum, statusCol, '在庫無し');
         statusChanged++;
       }
@@ -69,7 +64,7 @@ function updateInventoryEstimateFromStockSheet_() {
     }
   }
 
-  console.log(`[在庫推測] 完了: written=${written}, statusChanged=${statusChanged}, cleared=${cleared}, asinsProcessed=${groups.size}`);
+  console.log(`[在庫推測] 完了: written=${written}, statusChanged=${statusChanged}, asinsProcessed=${groups.size}`);
 }
 
 function updateStatusAndInventoryEstimate_() {

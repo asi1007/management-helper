@@ -95,11 +95,13 @@ function updateStatusEstimateFromInboundPlans_() {
       estimate = diff <= 0.1 ? '在庫あり' : '納品中';
     }
 
+    console.log(`[推測ステータス] row=${rowNum} sku=${sku} ${id.type}=${id.value} shipmentStatus=${shipmentStatus || 'N/A'} shipped=${totals.shipped} received=${totals.received} matched=${totals.matchedCount}/${(items || []).length} -> ${estimate}`);
+    if (estimate === '納品中') continue;
+
     sheet.writeCell(rowNum, statusCol, estimate);
     if (estimate === '在庫あり') {
       sheet.writeCell(rowNum, receivedDateCol, new Date());
     }
-    console.log(`[推測ステータス] row=${rowNum} sku=${sku} ${id.type}=${id.value} shipmentStatus=${shipmentStatus || 'N/A'} shipped=${totals.shipped} received=${totals.received} matched=${totals.matchedCount}/${(items || []).length} -> ${estimate}`);
     updated++;
   }
 
