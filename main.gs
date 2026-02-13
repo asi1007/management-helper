@@ -39,7 +39,7 @@ function createInspectionSheetFromPurchaseRowsIfNeeded(purchaseRows) {
   return createInspectionSheetFromPurchaseRowsIfNeeded_(purchaseRows);
 }
 
-// 在庫・ステータス推測値
+// 在庫・ステータス更新
 function updateInventoryEstimateFromStockSheet() {
   return updateInventoryEstimateFromStockSheet_();
 }

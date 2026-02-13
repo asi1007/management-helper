@@ -3,9 +3,9 @@
 /**
  * stockシートのヘッダー行から「ASIN」列と「販売可能」を含む列を特定し、
  * 仕入管理シート（PurchaseSheet）の各ASINについて、下の行から順に:
- * 1) 在庫数推測値 = min(購入数, 販売可能在庫数(temp))
- * 2) 販売可能在庫数(temp) = 販売可能在庫数(temp) - 在庫数推測値
- * 3) 在庫数推測値 == 0 のとき、ステータス推測値 = 在庫無し
+ * 1) 在庫数 = min(購入数, 販売可能在庫数(temp))
+ * 2) 販売可能在庫数(temp) = 販売可能在庫数(temp) - 在庫数
+ * 3) 在庫数 == 0 のとき、ステータス = 在庫無し
  */
 function updateInventoryEstimateFromStockSheet_() {
   const config = getEnvConfig();
@@ -17,13 +17,12 @@ function updateInventoryEstimateFromStockSheet_() {
   const qtyColName = '購入数';
   const asinColName = 'ASIN';
   const statusColName = 'ステータス';
-  const invEstColName = '在庫数推測値';
-  const statusEstColName = 'ステータス推測値';
+  const invColName = '在庫数';
 
-  const invEstCol = purchase._getColumnIndexByName(invEstColName) + 1;
-  const statusEstCol = purchase._getColumnIndexByName(statusEstColName) + 1;
+  const invCol = purchase._getColumnIndexByName(invColName) + 1;
+  const statusCol = purchase._getColumnIndexByName(statusColName) + 1;
 
-  // 「在庫あり」行をASINでグルーピング、それ以外は在庫数推測値をクリア
+  // 「在庫あり」行をASINでグルーピング、それ以外は在庫数をクリア
   const groups = new Map(); // asin -> BaseRow[]
   const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
   let cleared = 0;
@@ -31,11 +30,10 @@ function updateInventoryEstimateFromStockSheet_() {
     const asin = row.get(asinColName);
     if (!asin) continue;
     const status = row.get(statusColName);
-    const statusEst = row.get(statusEstColName);
-    if (status !== '在庫あり' && statusEst !== '在庫あり') {
-      const existing = row.get(invEstColName);
+    if (status !== '在庫あり') {
+      const existing = row.get(invColName);
       if (existing !== '' && existing != null) {
-        purchase.writeCell(row.rowNumber, invEstCol, '');
+        purchase.writeCell(row.rowNumber, invCol, '');
         cleared++;
       }
       continue;
@@ -57,17 +55,17 @@ function updateInventoryEstimateFromStockSheet_() {
       const purchaseQty = Number(row.get(qtyColName) || 0) || 0;
 
       const invEst = Math.min(purchaseQty, temp);
-      purchase.writeCell(rowNum, invEstCol, invEst);
+      purchase.writeCell(rowNum, invCol, invEst);
       written++;
 
       temp = Math.max(0, temp - invEst);
 
       if (invEst === 0) {
-        purchase.writeCell(rowNum, statusEstCol, '在庫無し');
+        purchase.writeCell(rowNum, statusCol, '在庫無し');
         statusChanged++;
       }
 
-      console.log(`[在庫推測] asin=${asin} row=${rowNum} 購入数=${purchaseQty} temp(after)=${temp} 在庫数推測値=${invEst}${invEst === 0 ? ' -> 在庫無し' : ''}`);
+      console.log(`[在庫推測] asin=${asin} row=${rowNum} 購入数=${purchaseQty} temp(after)=${temp} 在庫数=${invEst}${invEst === 0 ? ' -> 在庫無し' : ''}`);
     }
   }
 

@@ -1,10 +1,10 @@
 /* exported updateStatusEstimateFromInboundPlans_ */
 
 /**
- * 仕入管理シートの「ステータス推測値=納品中」行について、
+ * 仕入管理シートの「ステータス=納品中」行について、
  * 納品プラン列の値（shipmentId or inboundPlanId）から
  * 該当行のSKUに一致するitemのみの QuantityShipped / QuantityReceived で判定し、
- * ステータス推測値を更新する。
+ * ステータスを更新する。
  *
  * ルール:
  * - QuantityReceived >= QuantityShipped -> 在庫あり
@@ -17,11 +17,11 @@ function updateStatusEstimateFromInboundPlans_() {
   const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   const creator = new InboundPlanCreator(accessToken);
 
-  // 対象: ステータス推測値が「納品中」
-  sheet.filter('ステータス推測値', ['納品中']);
+  // 対象: ステータスが「納品中」
+  sheet.filter('ステータス', ['納品中']);
 
   const planCol = sheet._getColumnIndexByName('納品プラン') + 1;
-  const estimateCol = 101; // CW列（1-indexed）
+  const statusCol = sheet._getColumnIndexByName('ステータス') + 1;
   const receivedDateCol = sheet._getColumnIndexByName('受領日') + 1;
 
   const itemsCache = new Map(); // id.value -> items[]
@@ -62,7 +62,7 @@ function updateStatusEstimateFromInboundPlans_() {
     // CLOSEDなら在庫ありと判定
     const shipmentStatus = statusCache.get(id.value) || '';
     if (shipmentStatus === 'CLOSED') {
-      sheet.writeCell(rowNum, estimateCol, '在庫あり');
+      sheet.writeCell(rowNum, statusCol, '在庫あり');
       sheet.writeCell(rowNum, receivedDateCol, new Date());
       console.log(`[推測ステータス] row=${rowNum} sku=${sku} shipmentId=${id.value} shipmentStatus=CLOSED -> 在庫あり`);
       updated++;
@@ -95,7 +95,7 @@ function updateStatusEstimateFromInboundPlans_() {
       estimate = diff <= 0.1 ? '在庫あり' : '納品中';
     }
 
-    sheet.writeCell(rowNum, estimateCol, estimate);
+    sheet.writeCell(rowNum, statusCol, estimate);
     if (estimate === '在庫あり') {
       sheet.writeCell(rowNum, receivedDateCol, new Date());
     }
