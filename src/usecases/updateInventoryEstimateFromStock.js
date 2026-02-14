@@ -5,7 +5,7 @@
  * 仕入管理シート（PurchaseSheet）の各ASINについて、下の行から順に:
  * 1) 在庫数 = min(購入数, 販売可能在庫数(temp))
  * 2) 販売可能在庫数(temp) = 販売可能在庫数(temp) - 在庫数
- * 3) 在庫数 == 0 のとき、ステータス = 在庫無し
+ * 3) 在庫数 == 0 の行はアーカイブ対象（ステータス列は変更しない）
  */
 function updateInventoryEstimateFromStockSheet_() {
   const config = getEnvConfig();
@@ -20,7 +20,6 @@ function updateInventoryEstimateFromStockSheet_() {
   const invColName = '在庫数';
 
   const invCol = purchase._getColumnIndexByName(invColName) + 1;
-  const statusCol = purchase._getColumnIndexByName(statusColName) + 1;
 
   // 「在庫あり」行をASINでグルーピング
   const groups = new Map(); // asin -> BaseRow[]
@@ -35,7 +34,6 @@ function updateInventoryEstimateFromStockSheet_() {
   }
 
   let written = 0;
-  let statusChanged = 0;
   for (const [asin, rows] of groups.entries()) {
     rows.sort((a, b) => (b.rowNumber || 0) - (a.rowNumber || 0));
 
@@ -55,16 +53,11 @@ function updateInventoryEstimateFromStockSheet_() {
         written++;
       }
 
-      if (invEst === 0 && row.get(statusColName) !== '在庫無し') {
-        purchase.writeCell(rowNum, statusCol, '在庫無し');
-        statusChanged++;
-      }
-
-      console.log(`[在庫推測] asin=${asin} row=${rowNum} 購入数=${purchaseQty} temp(after)=${temp} 在庫数=${invEst}${invEst === 0 ? ' -> 在庫無し' : ''}`);
+      console.log(`[在庫推測] asin=${asin} row=${rowNum} 購入数=${purchaseQty} temp(after)=${temp} 在庫数=${invEst}`);
     }
   }
 
-  console.log(`[在庫推測] 完了: written=${written}, statusChanged=${statusChanged}, asinsProcessed=${groups.size}`);
+  console.log(`[在庫推測] 完了: written=${written}, asinsProcessed=${groups.size}`);
 }
 
 function updateStatusAndInventoryEstimate_() {
