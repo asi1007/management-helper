@@ -21,14 +21,15 @@ function updateInventoryEstimateFromStockSheet_() {
 
   const invCol = purchase._getColumnIndexByName(invColName) + 1;
 
-  // 「在庫あり」行をASINでグルーピング
+  // 「在庫あり」「在庫無し」行をASINでグルーピング
+  const targetStatuses = new Set(['在庫あり', '在庫無し']);
   const groups = new Map(); // asin -> BaseRow[]
   const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
   for (const row of allRows) {
     const asin = row.get(asinColName);
     if (!asin) continue;
     const status = row.get(statusColName);
-    if (status !== '在庫あり') continue;
+    if (!targetStatuses.has(status)) continue;
     if (!groups.has(asin)) groups.set(asin, []);
     groups.get(asin).push(row);
   }
