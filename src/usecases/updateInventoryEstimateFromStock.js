@@ -21,8 +21,8 @@ function updateInventoryEstimateFromStockSheet_() {
 
   const invCol = purchase._getColumnIndexByName(invColName) + 1;
 
-  // 「在庫あり」「在庫無し」行をASINでグルーピング
-  const targetStatuses = new Set(['在庫あり', '在庫無し']);
+  // 「在庫あり」「在庫なし」行をASINでグルーピング
+  const targetStatuses = new Set(['在庫あり', '在庫なし']);
   const groups = new Map(); // asin -> BaseRow[]
   const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
   for (const row of allRows) {
@@ -116,12 +116,12 @@ function moveOutOfStockToArchive_() {
   const rowsToArchive = [];
   for (const row of allRows) {
     if (row.rowNumber < 6) continue;
-    if (row.get(statusColName) !== '在庫無し') continue;
+    if (row.get(statusColName) !== '在庫なし') continue;
     rowsToArchive.push(row.rowNumber);
   }
 
   if (rowsToArchive.length === 0) {
-    console.log('[アーカイブ] 在庫無し行なし');
+    console.log('[アーカイブ] 在庫なし行なし');
     return;
   }
 
