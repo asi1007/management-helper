@@ -36,7 +36,7 @@ class Downloader{
     const fileResponse = UrlFetchApp.fetch(fileURI, {method:"GET"});
     const pdfBlob = fileResponse.getBlob();
 
-    const folder = DriveApp.getFolderById("1JTpxTG6yyICTlraxY91VLoXzKva0FAIr");
+    const folder = DriveApp.getFolderById("1ymbSzyiawRaREUwwaNYp4OzoGEOBgDNp");
     const file = folder.createFile(pdfBlob.setName(fileName + '.pdf'));
     const fileId = file.getId();
     const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
