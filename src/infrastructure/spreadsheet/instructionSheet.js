@@ -8,7 +8,7 @@ function assert(condition, message) {
 
 class InstructionSheet {
   constructor() {
-    this.TEMPLATE_ID = '1YDBbEgxTnRZRqKi5UUsQAZfCgakdzVKNJtX6cPBZARA';
+    this.TEMPLATE_ID = '1qd3raNESIc35YvzPoBBwEKEFySDLw0-XZL9bNAcqcus';
     this.START_ROW = 8;
     this.KEEPA_API_ENDPOINT = 'https://api.keepa.com/product';
     this.AMAZON_IMAGE_BASE_URL = 'https://images-na.ssl-images-amazon.com/images/I/';
