@@ -32,6 +32,15 @@ class Downloader{
     const responseJson = JSON.parse(response.getContentText());
     console.log('downloadLabels response:', responseJson);
 
+    if (responseJson.errors && responseJson.errors.length > 0) {
+      const errorMessages = responseJson.errors.map(e => `${e.code}: ${e.message}`).join('; ');
+      throw new Error(`SP-API ラベル取得エラー: ${errorMessages}`);
+    }
+
+    if (!responseJson.documentDownloads || responseJson.documentDownloads.length === 0) {
+      throw new Error('SP-API レスポンスにダウンロードURLが含まれていません');
+    }
+
     const fileURI = responseJson.documentDownloads[0].uri;
     const fileResponse = UrlFetchApp.fetch(fileURI, {method:"GET"});
     const pdfBlob = fileResponse.getBlob();
