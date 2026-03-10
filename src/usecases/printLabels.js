@@ -1,12 +1,3 @@
-function loadLabelPDF(labelItems, accessToken) {
-  const skuDownloader = new Downloader(accessToken);
-  const now = new Date();
-  const datetimeStr = Utilities.formatDate(now, 'JST', 'yyyy-MM-dd');
-  const skuNums = (labelItems || []).map(i => i.toMskuQuantity());
-  const result = skuDownloader.downloadLabels(skuNums, datetimeStr);
-  return result.url;
-}
-
 function createInspectionSheetAndWriteLink(sheet, data) {
   // 検品シート（詳細検品マスタにASINがある場合のみ）
   try {
@@ -25,9 +16,20 @@ function createInspectionSheetAndWriteLink(sheet, data) {
 
 function createLabelPDF(data, accessToken) {
   const aggregator = new LabelAggregator();
-  const items = aggregator.aggregate(data); // itemsが空ならaggregate内で例外
-  const labelURL = loadLabelPDF(items, accessToken);
-  return labelURL;
+  const items = aggregator.aggregate(data);
+  const skuDownloader = new Downloader(accessToken);
+  const now = new Date();
+  const datetimeStr = Utilities.formatDate(now, 'JST', 'yyyy-MM-dd');
+  const skuNums = items.map(i => i.toMskuQuantity());
+  const result = skuDownloader.downloadLabels(skuNums, datetimeStr);
+
+  if (result.urls && result.urls.length > 1) {
+    SpreadsheetApp.getUi().alert(
+      `ラベル分割ダウンロード完了\n${result.urls.length}件のPDFを作成しました`
+    );
+  }
+
+  return result.urls || [result.url];
 }
 
 function createInstructionSheet(data) {
@@ -44,13 +46,13 @@ function generateLabelsAndInstructions_() {
   sheet.fillMissingSkusFromAsins(accessToken, data);
   // FNSKUも補完（SKU -> FNSKU）
   sheet.fetchMissingFnskus(accessToken, data);
-  
+
   try {
     createInspectionSheetAndWriteLink(sheet, data);
-    const labelURL = createLabelPDF(data, accessToken);
+    const labelURLs = createLabelPDF(data, accessToken);
     const instructionURL = createInstructionSheet(data);
-    
-    writeToSheet(sheet, data, instructionURL, labelURL);
+
+    writeToSheet(sheet, data, instructionURL, labelURLs);
 
   } catch (error) {
     console.error(`Error generating label or instruction:`, error.message);
@@ -60,7 +62,7 @@ function generateLabelsAndInstructions_() {
 }
 
 
-function writeToSheet(sheet, data, instructionURL, labelURL) {
+function writeToSheet(sheet, data, instructionURL, labelURLs) {
   const dateOnly = new Date();
   dateOnly.setHours(0, 0, 0, 0);
   sheet.writeColumn("梱包依頼日", dateOnly);
@@ -72,7 +74,13 @@ function writeToSheet(sheet, data, instructionURL, labelURL) {
     console.warn(`プラン別名列への書き込みでエラーが発生しました: ${error.message}`);
   }
 
-  sheet.writeCell(2, 1, { type: 'formula', value: `=HYPERLINK("${labelURL}", "ラベルデータ")` });
+  if (labelURLs.length === 1) {
+    sheet.writeCell(2, 1, { type: 'formula', value: `=HYPERLINK("${labelURLs[0]}", "ラベルデータ")` });
+  } else {
+    for (let i = 0; i < labelURLs.length; i++) {
+      const row = 2 + i;
+      sheet.writeCell(row, 1, { type: 'formula', value: `=HYPERLINK("${labelURLs[i]}", "ラベル${i + 1}/${labelURLs.length}")` });
+    }
+  }
   sheet.writeCell(2, 2, { type: 'formula', value: `=HYPERLINK("${instructionURL}", "指示書")` });
 }
-
