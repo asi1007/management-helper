@@ -92,9 +92,9 @@ class Downloader{
 
   _splitByQuantityLimit(skuNums) {
     const maxQty = this.MAX_QUANTITY_PER_REQUEST;
-    const needsSplit = skuNums.some(item => item.quantity > maxQty);
+    const totalQuantity = skuNums.reduce((sum, item) => sum + item.quantity, 0);
 
-    if (!needsSplit) {
+    if (totalQuantity <= 15000) {
       return [skuNums];
     }
 
