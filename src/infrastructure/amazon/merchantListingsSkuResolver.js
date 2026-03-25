@@ -95,8 +95,9 @@ class MerchantListingsSkuResolver {
     // bytes（圧縮があれば展開）
     let bytes = blob.getBytes();
     if (algo === 'GZIP') {
-      // GASはUtilities.ungzipでBlobを展開できる
-      bytes = Utilities.ungzip(bytes);
+      // GASはUtilities.ungzipでBlobを展開できる（引数はBlob）
+      const gzipBlob = Utilities.newBlob(bytes, 'application/x-gzip');
+      bytes = Utilities.ungzip(gzipBlob).getBytes();
     }
 
     // まずUTF-8で試し、ヘッダーが文字化けしてそうならShift_JISで読み直す
