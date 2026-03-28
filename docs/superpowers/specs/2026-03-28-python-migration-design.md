@@ -86,23 +86,42 @@ python/
 
 ## 依存パッケージ
 
+既存プロジェクト（auto-order, fullfilment等）に合わせてバージョンを統一:
+
 ```toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
+name = "management-helper"
+version = "0.1.0"
+description = "仕入管理・ラベル印刷自動化ツール"
+requires-python = ">=3.12"
+
 dependencies = [
-    "gspread>=6.0",
-    "google-auth>=2.0",
+    "gspread==6.1.2",
+    "oauth2client==4.1.3",
     "google-api-python-client>=2.0",
     "httpx>=0.27",
-    "python-dotenv>=1.0",
+    "python-dotenv==1.0.1",
     "click>=8.0",
     "tenacity>=8.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-mock>=3.0",
+    "pytest==8.3.3",
+    "pytest-mock==3.14.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+pythonpath = ["src"]
 ```
 
 ## アーキテクチャ設計
@@ -152,17 +171,48 @@ GAS版と同じエンドポイント・ペイロード構造を維持。httpxで
 
 ### Google認証
 
-サービスアカウントJSON認証を使用:
-```python
-import gspread
-from google.oauth2.service_account import Credentials
+既存プロジェクト（auto-order, fullfilment）と同じ`oauth2client`パターンを採用:
 
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
+```python
+from oauth2client.service_account import ServiceAccountCredentials
+import gspread
+
+scope = [
+    "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive",
 ]
-credentials = Credentials.from_service_account_file("credentials.json", scopes=scopes)
-gc = gspread.authorize(credentials)
+credentials = ServiceAccountCredentials.from_json_keyfile_name(
+    credentials_file, scope
+)
+client = gspread.authorize(credentials)
+```
+
+### 設定管理（AppConfig）
+
+既存プロジェクトと同じ`AppConfig` dataclassパターンを採用:
+
+```python
+@dataclass(frozen=True)
+class AppConfig:
+    credentials_file: str
+    sheet_id: str
+    purchase_sheet_name: str
+    home_shipment_sheet_name: str
+    work_record_sheet_name: str
+    api_key: str
+    api_secret: str
+    refresh_token: str
+    keepa_api_key: str
+    # ...
+
+    @classmethod
+    def from_dotenv(cls, dotenv_path: str | None = None) -> "AppConfig":
+        load_dotenv(dotenv_path=dotenv_path)
+        return cls(
+            credentials_file=os.getenv("GOOGLE_CREDENTIALS_FILE", "service_account.json"),
+            sheet_id=os.getenv("SHEET_ID", ""),
+            # ...
+        )
 ```
 
 ### CLIエントリーポイント

@@ -118,6 +118,14 @@ def arrival_date(row_numbers: tuple[int, ...]) -> None:
 
 
 @cli.command()
+def batch_labels() -> None:
+    from usecases.batch_print_labels import batch_print_labels
+    config, repo = _get_config_and_repo()
+    drive_service = _get_drive_service(config)
+    batch_print_labels(config, repo, drive_service)
+
+
+@cli.command()
 def set_filter() -> None:
     from usecases.set_filter import set_filter as _set
     config, repo = _get_config_and_repo()

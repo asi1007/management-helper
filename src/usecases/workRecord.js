@@ -1,7 +1,7 @@
 /* exported recordWorkStart_, recordWorkEnd_, recordDefect_ */
 
 function recordWorkStart_() {
-  const { config } = getConfigSettingAndToken();
+  const config = getEnvConfig();
   
   // 自宅発送シートでアクティブな行のデータを取得
   const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
@@ -34,7 +34,7 @@ function recordWorkStart_() {
 }
 
 function recordWorkEnd_() {
-  const { config } = getConfigSettingAndToken();
+  const config = getEnvConfig();
   
   // 自宅発送シートでアクティブな行のデータを取得
   const homeSheet = new HomeShipmentSheet(config.HOME_SHIPMENT_SHEET_NAME);
