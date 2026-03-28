@@ -17,6 +17,7 @@ from infrastructure.spreadsheet.base_row import BaseRow
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.instruction_sheet import InstructionSheet
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
+from usecases.create_inspection_sheet import create_inspection_sheet_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ def batch_print_labels(config: AppConfig, repo: BaseSheetsRepository) -> None:
 
         label_paths = _create_label_pdf(rows, access_token, config, category)
         instruction_path = _create_instruction_sheet(config, rows)
+        inspection_path = _create_inspection_sheet(config, repo, rows, category)
 
         _write_to_sheet(sheet, str(instruction_path))
 
@@ -68,12 +70,15 @@ def batch_print_labels(config: AppConfig, repo: BaseSheetsRepository) -> None:
         for p in label_paths:
             click.echo(f"    {p}")
         click.echo(f"  指示書: {instruction_path}")
+        if inspection_path:
+            click.echo(f"  検品指示書: {inspection_path}")
 
         group_results.append({
             "category": category,
             "row_count": len(rows),
             "label_paths": label_paths,
             "instruction_path": str(instruction_path),
+            "inspection_path": str(inspection_path) if inspection_path else None,
         })
 
     click.echo("\n" + "=" * 50)
@@ -158,6 +163,12 @@ def _create_instruction_sheet(config: AppConfig, data: list[Any]) -> Path:
     return instruction.create(data)
 
 
+def _create_inspection_sheet(
+    config: AppConfig, repo: BaseSheetsRepository, data: list[Any], category: str
+) -> Path | None:
+    return create_inspection_sheet_if_needed(config, repo, data, category)
+
+
 def _write_to_sheet(sheet: PurchaseSheet, instruction_path: str) -> None:
     today = datetime.now().strftime("%Y/%m/%d")
     sheet.write_column_by_func("梱包依頼日", lambda _row, _i: today)
@@ -175,6 +186,7 @@ def _send_chatwork_by_group(config: AppConfig, group_results: list[dict[str, Any
         to_tag = f"[To:{config.chatwork_to_account_id}]徐雪蘭さん\n"
 
     headers = {"X-ChatWorkToken": config.chatwork_api_token}
+    msg_url = f"https://api.chatwork.com/v2/rooms/{config.chatwork_room_id}/messages"
     file_url = f"https://api.chatwork.com/v2/rooms/{config.chatwork_room_id}/files"
 
     for i, group in enumerate(group_results):
@@ -182,23 +194,33 @@ def _send_chatwork_by_group(config: AppConfig, group_results: list[dict[str, Any
         row_count = group["row_count"]
         message = f"{to_tag}【{category}】{row_count}件の梱包指示書を作成したので送付します。"
 
+        # メッセージを先に送信
+        response = httpx.post(msg_url, headers=headers, data={"body": message, "self_unread": 0}, timeout=10.0)
+        if response.status_code == 200:
+            click.echo(f"  Chatworkメッセージ [{category}]")
+        else:
+            click.echo(f"  Chatworkメッセージエラー [{category}]: {response.status_code}")
+        time.sleep(1)
+
+        # ファイルを順次送信
         file_paths = group["label_paths"] + [group["instruction_path"]]
-        first = True
+        if group.get("inspection_path"):
+            file_paths.append(group["inspection_path"])
+
         for file_path in file_paths:
             path = Path(file_path)
             if not path.exists():
                 continue
             with open(path, "rb") as f:
                 files = {"file": (path.name, f, _guess_content_type(path))}
-                data = {"message": message if first else ""}
-                response = httpx.post(file_url, headers=headers, files=files, data=data, timeout=30.0)
+                response = httpx.post(file_url, headers=headers, files=files, data={"message": ""}, timeout=30.0)
             if response.status_code == 200:
-                click.echo(f"  Chatwork送信 [{category}]: {path.name}")
+                click.echo(f"  Chatworkファイル [{category}]: {path.name}")
             else:
-                click.echo(f"  Chatwork送信エラー ({path.name}): {response.status_code} {response.text}")
-            first = False
-            time.sleep(0.5)
+                click.echo(f"  Chatworkファイルエラー ({path.name}): {response.status_code} {response.text}")
+            time.sleep(1)
 
+        # 次のグループとの間隔
         if i < len(group_results) - 1:
             time.sleep(2)
 
