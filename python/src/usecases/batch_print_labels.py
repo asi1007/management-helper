@@ -46,9 +46,12 @@ def batch_print_labels(config: AppConfig, repo: BaseSheetsRepository) -> None:
 
     non_home_rows = [r for rows in non_home_groups.values() for r in rows]
     sheet.data = non_home_rows
-    sheet.fill_missing_skus_from_asins(access_token)
+
+    from infrastructure.spreadsheet.sales_sheet import SalesSheet
+    sales = SalesSheet(repo)
+    asin_map = sales.load_asin_to_sku_fnsku()
+    sheet.fill_missing_sku_fnsku_from_sales(asin_map)
     _validate_no_blank_sku(sheet.data)
-    sheet.fetch_missing_fnskus(access_token)
 
     click.echo(f"\n{len(non_home_groups)}グループを処理します")
     click.echo("=" * 50)

@@ -4,8 +4,6 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from infrastructure.amazon.fnsku_getter import FnskuGetter
-from infrastructure.amazon.merchant_listings_sku_resolver import MerchantListingsSkuResolver
 from infrastructure.spreadsheet.base_sheet import BaseSheet
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 
@@ -75,55 +73,35 @@ class PurchaseSheet(BaseSheet):
             self._worksheet.delete_rows(row_num)
             logger.info("行%dを削除しました", row_num)
 
-    def fetch_missing_fnskus(self, access_token: str) -> None:
-        getter = FnskuGetter(access_token)
-        fnsku_col_idx = self._get_column_index_by_name("FNSKU")
-        fnsku_col = fnsku_col_idx + 1
-        for row in self.data:
-            fnsku = str(row.get("FNSKU") or "").strip()
-            sku = str(row.get("SKU") or "").strip()
-            if not fnsku and sku:
-                fetched = getter.get_fnsku(sku)
-                logger.info("FNSKU取得: %s -> %s", sku, fetched)
-                self.write_cell(row.row_number, fnsku_col, fetched)
-                row[fnsku_col_idx] = fetched
-
-    def fill_missing_skus_from_asins(self, access_token: str) -> None:
+    def fill_missing_sku_fnsku_from_sales(self, asin_map: dict[str, dict[str, str]]) -> None:
         sku_col_idx = self._get_column_index_by_name("SKU")
         sku_col = sku_col_idx + 1
-        asin_to_sku_local = self._build_asin_to_sku_local_map()
-        targets = self._collect_missing_sku_targets()
-        if not targets:
-            logger.info("[SKU補完] SKU空白なし -> スキップ")
-            return
-        filled_local = 0
-        still_missing_asins: list[str] = []
-        for t in targets:
-            resolved = asin_to_sku_local.get(t["asin"])
-            if resolved:
-                self.write_cell(t["row_num"], sku_col, resolved)
-                t["row"][sku_col_idx] = resolved
-                filled_local += 1
-            else:
-                still_missing_asins.append(t["asin"])
-        unique_missing = list(set(still_missing_asins))
-        if not unique_missing:
-            logger.info("[SKU補完] ローカル流用で全件補完: %d/%d", filled_local, len(targets))
-            return
-        logger.info("[SKU補完] ローカル=%d/%d -> Reports API (ASIN数=%d)", filled_local, len(targets), len(unique_missing))
-        resolver = MerchantListingsSkuResolver(access_token)
-        asin_to_sku_remote = resolver.resolve_skus_by_asins(unique_missing)
-        filled_remote = 0
-        for t in targets:
-            current = str(t["row"].get("SKU") or "").strip()
-            if current:
+        fnsku_col_idx = self._get_column_index_by_name("FNSKU")
+        fnsku_col = fnsku_col_idx + 1
+
+        filled_sku = 0
+        filled_fnsku = 0
+        for row in self.data:
+            asin = str(row.get("ASIN") or "").strip()
+            if not asin:
                 continue
-            resolved = asin_to_sku_remote.get(t["asin"])
-            if resolved:
-                self.write_cell(t["row_num"], sku_col, resolved)
-                t["row"][sku_col_idx] = resolved
-                filled_remote += 1
-        logger.info("[SKU補完] 完了: local=%d, remote=%d, total=%d/%d", filled_local, filled_remote, filled_local + filled_remote, len(targets))
+            mapping = asin_map.get(asin)
+            if not mapping:
+                continue
+
+            current_sku = str(row.get("SKU") or "").strip()
+            if not current_sku and mapping["sku"]:
+                self.write_cell(row.row_number, sku_col, mapping["sku"])
+                row[sku_col_idx] = mapping["sku"]
+                filled_sku += 1
+
+            current_fnsku = str(row.get("FNSKU") or "").strip()
+            if not current_fnsku and mapping["fnsku"]:
+                self.write_cell(row.row_number, fnsku_col, mapping["fnsku"])
+                row[fnsku_col_idx] = mapping["fnsku"]
+                filled_fnsku += 1
+
+        logger.info("[SKU/FNSKU補完] 売上シートから補完: SKU=%d件, FNSKU=%d件", filled_sku, filled_fnsku)
 
     def write_plan_name_to_rows(self, instruction_url: str | None) -> int:
         date_str = self._format_date_mmdd()
