@@ -2,70 +2,80 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-import gspread
 import httpx
-
-from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
+from openpyxl import load_workbook
+from openpyxl.drawing.image import Image as XlImage
 
 logger = logging.getLogger(__name__)
 
-TEMPLATE_ID = "1qd3raNESIc35YvzPoBBwEKEFySDLw0-XZL9bNAcqcus"
+TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "instruction_template.xlsx"
 START_ROW = 8
 
 
 class InstructionSheet:
-    def __init__(self, repo: BaseSheetsRepository, drive_service: Any, keepa_api_key: str) -> None:
-        self._repo = repo
-        self._drive_service = drive_service
+    def __init__(self, save_dir: Path, keepa_api_key: str) -> None:
+        self._save_dir = save_dir
         self._keepa_api_key = keepa_api_key
 
-    def create(self, data: list[Any]) -> str:
+    def create(self, data: list[Any]) -> Path:
         rows = self._extract_rows(data)
         plan_name = self._generate_plan_name(data)
-        file_id, sheet = self._create_sheet_file(plan_name)
-        self._write_row_data(sheet, rows)
-        return f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+
+        wb = load_workbook(str(TEMPLATE_PATH))
+        ws = wb.active
+        self._write_row_data(ws, rows)
+
+        self._save_dir.mkdir(parents=True, exist_ok=True)
+        file_path = self._save_dir / f"{plan_name}.xlsx"
+        wb.save(str(file_path))
+        logger.info("指示書保存: %s", file_path)
+        return file_path
 
     def _extract_rows(self, data: list[Any]) -> list[dict[str, str]]:
         rows: list[dict[str, str]] = []
         for row in data:
             fnsku = str(row.get("FNSKU") or "").strip()
             asin = str(row.get("ASIN") or "").strip()
-            product_name = str(row.get("商品名") or "").strip()
             quantity = str(row.get("購入数") or "").strip()
             if fnsku:
-                rows.append({"fnsku": fnsku, "asin": asin, "product_name": product_name, "quantity": quantity})
+                rows.append({"fnsku": fnsku, "asin": asin, "quantity": quantity})
         return rows
 
     def _generate_plan_name(self, data: list[Any]) -> str:
         now = datetime.now()
-        date_str = f"{now.month:02d}/{now.day:02d}"
+        date_str = f"{now.month:02d}{now.day:02d}"
         try:
             category = str(data[0].get("納品分類") or "").strip() if data else ""
         except Exception:
             category = ""
         return f"{date_str}{category}指示書"
 
-    def _create_sheet_file(self, plan_name: str) -> tuple[str, Any]:
-        copied = self._drive_service.files().copy(fileId=TEMPLATE_ID, body={"name": plan_name}).execute()
-        file_id = copied["id"]
-        spreadsheet = self._repo.client.open_by_key(file_id)
-        sheet = spreadsheet.sheet1
-        return file_id, sheet
-
-    def _write_row_data(self, sheet: Any, rows: list[dict[str, str]]) -> None:
+    def _write_row_data(self, ws: Any, rows: list[dict[str, str]]) -> None:
         for i, row_data in enumerate(rows):
             row_num = START_ROW + i
-            sheet.update_cell(row_num, 1, row_data["fnsku"])
-            sheet.update_cell(row_num, 2, row_data["asin"])
-            sheet.update_cell(row_num, 3, row_data["product_name"])
-            sheet.update_cell(row_num, 4, row_data["quantity"])
+            # B列: FNSKU, C列: ASIN, D列: 数量（テンプレートの列順に合わせる）
+            ws.cell(row=row_num, column=2, value=row_data["fnsku"])
+            ws.cell(row=row_num, column=3, value=row_data["asin"])
+            ws.cell(row=row_num, column=4, value=int(row_data["quantity"]) if row_data["quantity"] else 0)
+
             image_url = self._get_product_image(row_data["asin"])
             if image_url:
-                cell_label = gspread.utils.rowcol_to_a1(row_num, 5)
-                sheet.update_acell(cell_label, f'=IMAGE("{image_url}")')
+                try:
+                    img_response = httpx.get(image_url, timeout=10.0)
+                    if img_response.status_code == 200:
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                            tmp.write(img_response.content)
+                            tmp_path = tmp.name
+                        img = XlImage(tmp_path)
+                        img.width = 75
+                        img.height = 75
+                        ws.add_image(img, f"A{row_num}")
+                except Exception as e:
+                    logger.warning("画像挿入エラー (%s): %s", row_data["asin"], e)
 
     def _get_product_image(self, asin: str) -> str | None:
         if not asin or not self._keepa_api_key:

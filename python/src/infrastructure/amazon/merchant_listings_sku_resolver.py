@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 REPORTS_API_BASE = "https://sellingpartnerapi-fe.amazon.com/reports/2021-06-30"
 MARKETPLACE_ID = "A1VC38T7YXB528"
 POLL_INTERVAL_SEC = 5
-POLL_TIMEOUT_SEC = 90
+POLL_TIMEOUT_SEC = 300
 
 EN_SKU_HEADER = "seller-sku"
 EN_ASIN_HEADER = "asin1"
@@ -83,7 +83,7 @@ class MerchantListingsSkuResolver:
         lines = tsv_text.strip().split("\n")
         if not lines:
             return {}
-        headers = lines[0].split("\t")
+        headers = [h.lstrip("\ufeff") for h in lines[0].split("\t")]
         headers_lower = [h.strip().lower() for h in headers]
         sku_col = self._find_column(headers, headers_lower, [EN_SKU_HEADER, JA_SKU_HEADER])
         asin_col = self._find_column(headers, headers_lower, [EN_ASIN_HEADER, JA_ASIN_HEADER])

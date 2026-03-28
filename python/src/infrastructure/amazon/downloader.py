@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -9,13 +10,12 @@ logger = logging.getLogger(__name__)
 
 SP_API_LABELS_URL = "https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20/items/labels"
 MAX_QUANTITY_PER_REQUEST = 999
-LABEL_FOLDER_ID = "1ymbSzyiawRaREUwwaNYp4OzoGEOBgDNp"
 
 
 class Downloader:
-    def __init__(self, auth_token: str, drive_service: Any) -> None:
+    def __init__(self, auth_token: str, save_dir: Path) -> None:
         self._auth_token = auth_token
-        self._drive_service = drive_service
+        self._save_dir = save_dir
         self._headers = {
             "Accept": "application/json",
             "x-amz-access-token": auth_token,
@@ -31,21 +31,21 @@ class Downloader:
     def _download_single_batch(self, sku_nums: list[dict[str, Any]], file_name: str) -> dict[str, Any]:
         response_json = self._fetch_labels(sku_nums)
         pdf_bytes = self._download_pdf_bytes(response_json)
-        url = self._save_to_drive(pdf_bytes, f"{file_name}.pdf")
-        return {"url": url, "response_data": response_json}
+        path = self._save_to_local(pdf_bytes, f"{file_name}.pdf")
+        return {"path": str(path), "response_data": response_json}
 
     def _download_multiple_batches(self, chunks: list[list[dict[str, Any]]], file_name: str) -> dict[str, Any]:
-        urls: list[str] = []
+        paths: list[str] = []
         last_response: dict[str, Any] = {}
         for i, chunk in enumerate(chunks):
             logger.info("ラベル分割ダウンロード: %d/%d", i + 1, len(chunks))
             response_json = self._fetch_labels(chunk)
             pdf_bytes = self._download_pdf_bytes(response_json)
-            url = self._save_to_drive(pdf_bytes, f"{file_name}_part{i + 1}.pdf")
-            urls.append(url)
+            path = self._save_to_local(pdf_bytes, f"{file_name}_part{i + 1}.pdf")
+            paths.append(str(path))
             last_response = response_json
         logger.info("ラベル分割ダウンロード完了: %d件のPDFを作成しました", len(chunks))
-        return {"url": urls[0], "urls": urls, "response_data": last_response}
+        return {"path": paths[0], "paths": paths, "response_data": last_response}
 
     def _fetch_labels(self, sku_nums: list[dict[str, Any]]) -> dict[str, Any]:
         payload = {
@@ -70,18 +70,16 @@ class Downloader:
         response.raise_for_status()
         return response.content
 
-    def _save_to_drive(self, pdf_bytes: bytes, file_name: str) -> str:
-        from googleapiclient.http import MediaInMemoryUpload
-        media = MediaInMemoryUpload(pdf_bytes, mimetype="application/pdf")
-        file_metadata = {"name": file_name, "parents": [LABEL_FOLDER_ID]}
-        created = self._drive_service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        file_id = created["id"]
-        return f"https://drive.google.com/uc?export=download&id={file_id}"
+    def _save_to_local(self, pdf_bytes: bytes, file_name: str) -> Path:
+        self._save_dir.mkdir(parents=True, exist_ok=True)
+        file_path = self._save_dir / file_name
+        file_path.write_bytes(pdf_bytes)
+        logger.info("ラベルPDF保存: %s", file_path)
+        return file_path
 
     def _split_by_quantity_limit(self, sku_nums: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
         total_quantity = sum(item["quantity"] for item in sku_nums)
-        needs_split = total_quantity > 15000 or any(item["quantity"] > MAX_QUANTITY_PER_REQUEST for item in sku_nums)
-        if not needs_split:
+        if total_quantity <= 15000:
             return [sku_nums]
         expanded: list[dict[str, Any]] = []
         for item in sku_nums:

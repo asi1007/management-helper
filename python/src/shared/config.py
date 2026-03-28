@@ -18,6 +18,12 @@ SHIP_FROM_ADDRESS = {
     "email": "",
 }
 
+GDRIVE_BASE = "/Users/wadaatsushi/Library/CloudStorage/GoogleDrive-zyanzyakazyan@gmail.com/マイドライブ/work/shop/invoices/0828 ■共有 新白岡輸入販売×TAXLAB/業務用書類/8.指示書"
+DEFAULT_LABEL_DIR = f"{GDRIVE_BASE}/ラベル"
+DEFAULT_INSTRUCTION_DIR = f"{GDRIVE_BASE}/検品指示書"
+DEFAULT_DETAIL_INSPECTION_DIR = f"{GDRIVE_BASE}/イーウー詳細検品"
+
+
 @dataclass(frozen=True)
 class AppConfig:
     credentials_file: str
@@ -34,6 +40,12 @@ class AppConfig:
     api_secret: str
     refresh_token: str
     keepa_api_key: str
+    label_dir: str
+    instruction_dir: str
+    detail_inspection_dir: str
+    chatwork_api_token: str
+    chatwork_room_id: str
+    chatwork_to_account_id: str
 
     @classmethod
     def from_env(cls) -> AppConfig:
@@ -52,6 +64,12 @@ class AppConfig:
             api_secret=os.getenv("API_SECRET", ""),
             refresh_token=os.getenv("REFRESH_TOKEN", ""),
             keepa_api_key=os.getenv("KEEPA_API_KEY", ""),
+            label_dir=os.getenv("LABEL_DIR", DEFAULT_LABEL_DIR),
+            instruction_dir=os.getenv("INSTRUCTION_DIR", DEFAULT_INSTRUCTION_DIR),
+            detail_inspection_dir=os.getenv("DETAIL_INSPECTION_DIR", DEFAULT_DETAIL_INSPECTION_DIR),
+            chatwork_api_token=os.getenv("CHATWORK_API_TOKEN", ""),
+            chatwork_room_id=os.getenv("CHATWORK_ROOM_ID", ""),
+            chatwork_to_account_id=os.getenv("CHATWORK_TO_ACCOUNT_ID", ""),
         )
 
     @classmethod

@@ -18,14 +18,37 @@ def _get_config_and_repo() -> tuple[AppConfig, BaseSheetsRepository]:
     return config, repo
 
 
-def _get_drive_service(config: AppConfig) -> object:
-    from oauth2client.service_account import ServiceAccountCredentials
+def _get_drive_service(_config: AppConfig) -> object:
+    import os
+    from pathlib import Path
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(config.credentials_file, scope)
+
+    scopes = ["https://www.googleapis.com/auth/drive"]
+    python_dir = Path(__file__).resolve().parent
+    token_path = python_dir / "token.json"
+    client_secret_path = python_dir / "client_secret.json"
+
+    creds = None
+    if token_path.exists():
+        creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+        else:
+            if not client_secret_path.exists():
+                raise FileNotFoundError(
+                    f"{client_secret_path} が見つかりません。"
+                    "Google Cloud ConsoleでOAuth2クライアントID（デスクトップアプリ）を作成し、"
+                    "JSONをダウンロードして python/client_secret.json に配置してください。"
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), scopes)
+            creds = flow.run_local_server(port=0)
+        token_path.write_text(creds.to_json())
+
     return build("drive", "v3", credentials=creds)
 
 
@@ -121,8 +144,7 @@ def arrival_date(row_numbers: tuple[int, ...]) -> None:
 def batch_labels() -> None:
     from usecases.batch_print_labels import batch_print_labels
     config, repo = _get_config_and_repo()
-    drive_service = _get_drive_service(config)
-    batch_print_labels(config, repo, drive_service)
+    batch_print_labels(config, repo)
 
 
 @cli.command()
