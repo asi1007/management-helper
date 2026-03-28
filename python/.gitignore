@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+service_account.json
+credentials.json
+*.egg-info/
+dist/
+build/
+.pytest_cache/
