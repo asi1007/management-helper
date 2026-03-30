@@ -40,8 +40,10 @@ class InstructionSheet:
             fnsku = str(row.get("FNSKU") or "").strip()
             asin = str(row.get("ASIN") or "").strip()
             quantity = str(row.get("購入数") or "").strip()
+            remarks = str(row.get("備考") or "").strip()
+            order_number = str(row.get("注文番号") or "").strip()
             if fnsku:
-                rows.append({"fnsku": fnsku, "asin": asin, "quantity": quantity})
+                rows.append({"fnsku": fnsku, "asin": asin, "quantity": quantity, "remarks": remarks, "order_number": order_number})
         return rows
 
     def _generate_plan_name(self, data: list[Any]) -> str:
@@ -60,6 +62,8 @@ class InstructionSheet:
             ws.cell(row=row_num, column=2, value=row_data["fnsku"])
             ws.cell(row=row_num, column=3, value=row_data["asin"])
             ws.cell(row=row_num, column=4, value=int(row_data["quantity"]) if row_data["quantity"] else 0)
+            ws.cell(row=row_num, column=5, value=row_data["remarks"])
+            ws.cell(row=row_num, column=6, value=row_data["order_number"])
 
             image_url = self._get_product_image(row_data["asin"])
             if image_url:
