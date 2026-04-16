@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -36,39 +37,66 @@ class InboundPlanCreator:
         return {"inboundPlanId": inbound_plan_id, "link": link}
 
     def _create_inbound_plan_with_retry(self, items: dict[str, dict[str, Any]]) -> dict[str, Any]:
-        prep_owners_to_try = ["SELLER", "NONE", "AMAZON"]
-        for attempt, prep_owner in enumerate(prep_owners_to_try):
-            body = self._build_create_plan_body(items, prep_owner)
+        prep_overrides: dict[str, str] = {}
+        for attempt in range(MAX_RETRIES):
+            body = self._build_create_plan_body(items, prep_overrides)
             response = httpx.post(f"{API_BASE_2024}/inboundPlans", json=body, headers=self._headers, timeout=30.0)
             data = response.json()
-            if response.status_code == 200:
+            if response.status_code in (200, 202):
                 logger.info("納品プラン作成成功: %s", data)
                 return data
             errors = data.get("errors", [])
-            if self._is_prep_owner_error(errors) and attempt < len(prep_owners_to_try) - 1:
-                logger.warning("prepOwnerエラー(%s) -> %sでリトライ", prep_owner, prep_owners_to_try[attempt + 1])
+            new_overrides = self._parse_prep_owner_from_errors(errors, body["items"])
+            if new_overrides and attempt < MAX_RETRIES - 1:
+                prep_overrides.update(new_overrides)
+                logger.warning("prepOwnerエラー -> 個別修正でリトライ (attempt=%d, fixes=%d)", attempt + 1, len(new_overrides))
                 continue
             messages = "; ".join(f'{e.get("code")}: {e.get("message")}' for e in errors)
             raise RuntimeError(f"納品プラン作成エラー: {messages}")
         raise RuntimeError("納品プラン作成: リトライ上限到達")
 
-    def _build_create_plan_body(self, items: dict[str, dict[str, Any]], prep_owner: str) -> dict[str, Any]:
+    @staticmethod
+    def _parse_prep_owner_from_errors(errors: list[dict[str, Any]], sent_items: list[dict[str, Any]]) -> dict[str, str]:
+        sent_skus_by_internal_id: dict[str, str] = {}
+        for item in sent_items:
+            sent_skus_by_internal_id[item["msku"]] = item["msku"]
+
+        overrides: dict[str, str] = {}
+        for e in errors:
+            msg = str(e.get("message", ""))
+            match = re.search(r"ERROR: (\S+) (?:does not require|requires) prepOwner.*?Accepted values: \[([^\]]+)\]", msg)
+            if not match:
+                continue
+            error_id = match.group(1)
+            accepted_raw = match.group(2)
+            accepted = [v.strip() for v in accepted_raw.split(",")]
+            preferred = accepted[0]
+
+            if error_id in sent_skus_by_internal_id:
+                overrides[error_id] = preferred
+            else:
+                idx_match = re.search(r"items\.(\d+)\.", msg)
+                if idx_match:
+                    idx = int(idx_match.group(1)) - 1
+                    if 0 <= idx < len(sent_items):
+                        overrides[sent_items[idx]["msku"]] = preferred
+
+        return overrides
+
+    def _build_create_plan_body(self, items: dict[str, dict[str, Any]], prep_overrides: dict[str, str]) -> dict[str, Any]:
         item_list = []
         for sku, info in items.items():
             item_list.append({
                 "msku": sku, "asin": info.get("asin", ""),
                 "quantity": info.get("quantity", 0),
                 "labelOwner": info.get("labelOwner", "SELLER"),
-                "prepOwner": prep_owner,
+                "prepOwner": prep_overrides.get(sku, "SELLER"),
             })
         return {
             "destinationMarketplaces": [DEFAULT_MARKETPLACE_ID],
             "sourceAddress": SHIP_FROM_ADDRESS,
             "items": item_list,
         }
-
-    def _is_prep_owner_error(self, errors: list[dict[str, Any]]) -> bool:
-        return any("prepowner" in str(e.get("message", "")).lower() for e in errors)
 
     def _wait_operation(self, operation_id: str) -> dict[str, Any]:
         url = f"{API_BASE_2024}/operations/{operation_id}"
