@@ -197,6 +197,21 @@ class InboundPlanCreator:
         response.raise_for_status()
         return response.json().get("items", [])
 
+    def get_shipment_labels(self, shipment_id: str, *, page_type: str = "A4_24", label_type: str = "SHIPMENT") -> bytes:
+        url = f"{API_BASE_2024}/shipments/{shipment_id}/labels"
+        params = {"pageType": page_type, "labelType": label_type}
+        response = httpx.get(url, params=params, headers=self._headers, timeout=60.0)
+        if response.status_code in (200, 202):
+            data = response.json()
+            download_url = data.get("downloadUrl", "")
+            if download_url:
+                pdf_response = httpx.get(download_url, timeout=60.0)
+                pdf_response.raise_for_status()
+                logger.info("ラベルPDFダウンロード完了: shipment_id=%s, size=%d", shipment_id, len(pdf_response.content))
+                return pdf_response.content
+        response.raise_for_status()
+        raise RuntimeError(f"ラベルダウンロード失敗: {response.text}")
+
     def set_packing_information(self, inbound_plan_id: str, body: dict[str, Any]) -> dict[str, Any]:
         url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingInformation"
         response = httpx.post(url, json=body, headers=self._headers, timeout=30.0)
