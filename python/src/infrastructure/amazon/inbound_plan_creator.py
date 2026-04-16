@@ -36,8 +36,8 @@ class InboundPlanCreator:
         return {"inboundPlanId": inbound_plan_id, "link": link}
 
     def _create_inbound_plan_with_retry(self, items: dict[str, dict[str, Any]]) -> dict[str, Any]:
-        prep_owner = "AMAZON"
-        for attempt in range(MAX_RETRIES):
+        prep_owners_to_try = ["SELLER", "NONE", "AMAZON"]
+        for attempt, prep_owner in enumerate(prep_owners_to_try):
             body = self._build_create_plan_body(items, prep_owner)
             response = httpx.post(f"{API_BASE_2024}/inboundPlans", json=body, headers=self._headers, timeout=30.0)
             data = response.json()
@@ -45,9 +45,8 @@ class InboundPlanCreator:
                 logger.info("納品プラン作成成功: %s", data)
                 return data
             errors = data.get("errors", [])
-            if self._is_prep_owner_error(errors) and attempt < MAX_RETRIES - 1:
-                prep_owner = "SELLER"
-                logger.warning("prepOwnerエラー -> SELLERでリトライ (attempt=%d)", attempt + 1)
+            if self._is_prep_owner_error(errors) and attempt < len(prep_owners_to_try) - 1:
+                logger.warning("prepOwnerエラー(%s) -> %sでリトライ", prep_owner, prep_owners_to_try[attempt + 1])
                 continue
             messages = "; ".join(f'{e.get("code")}: {e.get("message")}' for e in errors)
             raise RuntimeError(f"納品プラン作成エラー: {messages}")
@@ -62,10 +61,14 @@ class InboundPlanCreator:
                 "labelOwner": info.get("labelOwner", "SELLER"),
                 "prepOwner": prep_owner,
             })
-        return {"marketplaceId": DEFAULT_MARKETPLACE_ID, "sourceAddress": SHIP_FROM_ADDRESS, "items": item_list}
+        return {
+            "destinationMarketplaces": [DEFAULT_MARKETPLACE_ID],
+            "sourceAddress": SHIP_FROM_ADDRESS,
+            "items": item_list,
+        }
 
     def _is_prep_owner_error(self, errors: list[dict[str, Any]]) -> bool:
-        return any("prepOwner" in str(e.get("message", "")).lower() for e in errors)
+        return any("prepowner" in str(e.get("message", "")).lower() for e in errors)
 
     def _wait_operation(self, operation_id: str) -> dict[str, Any]:
         url = f"{API_BASE_2024}/operations/{operation_id}"
