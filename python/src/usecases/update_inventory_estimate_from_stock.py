@@ -15,7 +15,7 @@ INVENTORY_COL = "在庫数推測値"
 def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
     asin_to_stock = _load_asin_to_available_stock(repo, config.sheet_id)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
-    sheet.filter("ステータス", ["在庫あり", "在庫なし"])
+    sheet.filter("状態", ["在庫あり", "在庫なし"])
     if not sheet.data:
         logger.info("対象行がありません")
         return

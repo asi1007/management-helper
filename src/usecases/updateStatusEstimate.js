@@ -16,7 +16,7 @@ function updateStatusEstimateFromInboundPlans_() {
   const sheet = new PurchaseSheet(config.PURCHASE_SHEET_NAME);
   const creator = new InboundPlanCreator(accessToken);
 
-  sheet.filter('ステータス', ['納品中']);
+  sheet.filter('状態', ['納品中']);
 
   const planCol = sheet._getColumnIndexByName('納品プラン') + 1;
   const invCol = sheet._getColumnIndexByName('在庫数') + 1;

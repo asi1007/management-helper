@@ -16,7 +16,7 @@ function updateInventoryEstimateFromStockSheet_() {
 
   const qtyColName = '購入数';
   const asinColName = 'ASIN';
-  const statusColName = 'ステータス';
+  const statusColName = '状態';
   const invColName = '在庫数';
 
   const invCol = purchase._getColumnIndexByName(invColName) + 1;
@@ -109,7 +109,7 @@ function moveOutOfStockToArchive_() {
   const archiveSheet = ss.getSheetByName('過去仕入れログ');
   if (!archiveSheet) throw new Error('シート "過去仕入れログ" が見つかりません');
 
-  const statusColName = 'ステータス';
+  const statusColName = '状態';
   const allRows = Array.isArray(purchase.allData) ? purchase.allData : purchase.data;
   const lastCol = purchase.sheet.getLastColumn();
 
