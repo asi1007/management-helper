@@ -78,21 +78,16 @@ class Downloader:
         return file_path
 
     def _split_by_quantity_limit(self, sku_nums: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+        SPLIT_THRESHOLD = 15000
+        CHUNK_LIMIT = 10000
         total_quantity = sum(item["quantity"] for item in sku_nums)
-        if total_quantity <= 15000:
+        if total_quantity <= SPLIT_THRESHOLD:
             return [sku_nums]
-        expanded: list[dict[str, Any]] = []
-        for item in sku_nums:
-            remaining = item["quantity"]
-            while remaining > 0:
-                qty = min(remaining, MAX_QUANTITY_PER_REQUEST)
-                expanded.append({"msku": item["msku"], "quantity": qty})
-                remaining -= qty
         chunks: list[list[dict[str, Any]]] = []
         current_chunk: list[dict[str, Any]] = []
         chunk_total = 0
-        for item in expanded:
-            if chunk_total + item["quantity"] > MAX_QUANTITY_PER_REQUEST and current_chunk:
+        for item in sku_nums:
+            if chunk_total + item["quantity"] > CHUNK_LIMIT and current_chunk:
                 chunks.append(current_chunk)
                 current_chunk = []
                 chunk_total = 0

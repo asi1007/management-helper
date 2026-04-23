@@ -86,6 +86,8 @@ def _collect_matched_items(rows: list[Any], catalog: Any) -> list[dict[str, Any]
 
 
 def _write_inspection_data(ws: Any, matched: list[dict[str, Any]], keepa_api_key: str) -> None:
+    _unmerge_data_cells(ws, len(matched))
+
     for i, item in enumerate(matched):
         target_row = START_ROW + (i * ROW_STEP)
         ws.cell(row=target_row, column=3, value=item["order_no"])
@@ -108,6 +110,25 @@ def _write_inspection_data(ws: Any, matched: list[dict[str, Any]], keepa_api_key
                     ws.add_image(img, f"E{target_row}")
             except Exception as e:
                 logger.warning("画像挿入エラー (%s): %s", item["asin"], e)
+
+
+def _unmerge_data_cells(ws: Any, item_count: int) -> None:
+    rows_to_unmerge: set[int] = set()
+    for i in range(item_count):
+        target_row = START_ROW + (i * ROW_STEP)
+        for r in range(target_row, target_row + ROW_STEP):
+            rows_to_unmerge.add(r)
+
+    ranges_to_unmerge: list[str] = []
+    for merged_range in list(ws.merged_cells.ranges):
+        if any(r in rows_to_unmerge for r in range(merged_range.min_row, merged_range.max_row + 1)):
+            ranges_to_unmerge.append(str(merged_range))
+
+    for r in ranges_to_unmerge:
+        try:
+            ws.unmerge_cells(r)
+        except Exception:
+            pass
 
 
 def _append_detail_instruction_sheets(

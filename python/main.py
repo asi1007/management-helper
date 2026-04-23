@@ -141,10 +141,12 @@ def arrival_date(row_numbers: tuple[int, ...]) -> None:
 
 
 @cli.command()
-def batch_labels() -> None:
+@click.option("--categories", type=str, default=None, help="納品分類をカンマ区切りで指定（例: ノーマル,ファッション）")
+def batch_labels(categories: str | None) -> None:
     from usecases.batch_print_labels import batch_print_labels
+    category_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
     config, repo = _get_config_and_repo()
-    batch_print_labels(config, repo)
+    batch_print_labels(config, repo, category_filter=category_list)
 
 
 @cli.command()

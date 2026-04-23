@@ -22,7 +22,9 @@ from usecases.create_inspection_sheet import create_inspection_sheet_if_needed
 logger = logging.getLogger(__name__)
 
 
-def batch_print_labels(config: AppConfig, repo: BaseSheetsRepository) -> None:
+def batch_print_labels(
+    config: AppConfig, repo: BaseSheetsRepository, category_filter: list[str] | None = None
+) -> None:
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
 
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
@@ -33,16 +35,18 @@ def batch_print_labels(config: AppConfig, repo: BaseSheetsRepository) -> None:
         return
 
     groups = _group_by_delivery_category(sheet.data)
-    non_home_groups = {k: v for k, v in groups.items() if "自宅" not in k}
+    if category_filter:
+        non_home_groups = {}
+        for cat in category_filter:
+            if cat in groups:
+                non_home_groups[cat] = groups[cat]
+            else:
+                click.echo(f"警告: 納品分類「{cat}」の行がありません")
+    else:
+        non_home_groups = {k: v for k, v in groups.items() if "自宅" not in k}
 
     if not non_home_groups:
-        click.echo("自宅以外の納品分類グループがありません")
         return
-
-    skipped = {k: v for k, v in groups.items() if "自宅" in k}
-    if skipped:
-        skipped_names = ", ".join(f"{k}({len(v)}行)" for k, v in skipped.items())
-        click.echo(f"スキップ（自宅）: {skipped_names}")
 
     non_home_rows = [r for rows in non_home_groups.values() for r in rows]
     sheet.data = non_home_rows
@@ -62,16 +66,22 @@ def batch_print_labels(config: AppConfig, repo: BaseSheetsRepository) -> None:
         click.echo(f"\n[{category}] {len(rows)}行")
 
         sheet.data = rows
+        is_home = "自宅" in category
 
-        label_paths = _create_label_pdf(rows, access_token, config, category)
+        if is_home:
+            label_paths = []
+            inspection_path = None
+        else:
+            label_paths = _create_label_pdf(rows, access_token, config, category)
+            inspection_path = _create_inspection_sheet(config, repo, rows, category)
         instruction_path = _create_instruction_sheet(config, rows)
-        inspection_path = _create_inspection_sheet(config, repo, rows, category)
 
         _write_to_sheet(sheet, str(instruction_path))
 
-        click.echo("  ラベル:")
-        for p in label_paths:
-            click.echo(f"    {p}")
+        if label_paths:
+            click.echo("  ラベル:")
+            for p in label_paths:
+                click.echo(f"    {p}")
         click.echo(f"  指示書: {instruction_path}")
         if inspection_path:
             click.echo(f"  検品指示書: {inspection_path}")
@@ -103,6 +113,7 @@ def _validate_no_blank_sku(rows: list[BaseRow]) -> None:
     if blank_rows:
         row_str = ", ".join(str(r) for r in blank_rows)
         raise RuntimeError(f"SKUが空白の行があります（行番号: {row_str}）。SKUを入力してから再実行してください。")
+
 
 
 def _group_by_delivery_category(rows: list[BaseRow]) -> dict[str, list[BaseRow]]:

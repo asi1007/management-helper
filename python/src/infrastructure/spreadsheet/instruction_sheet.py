@@ -91,11 +91,17 @@ class InstructionSheet:
             products = data.get("products", [])
             if not products:
                 return None
-            images_csv = products[0].get("imagesCSV", "")
-            if not images_csv:
-                return None
-            first_image = images_csv.split(",")[0]
-            return f"https://images-na.ssl-images-amazon.com/images/I/{first_image}._SL100_.jpg"
+            product = products[0]
+            images_csv = product.get("imagesCSV", "")
+            if images_csv:
+                first_image = images_csv.split(",")[0]
+                return f"https://images-na.ssl-images-amazon.com/images/I/{first_image}._SL100_.jpg"
+            images = product.get("images", [])
+            if images:
+                image_id = images[0].get("m") or images[0].get("l", "")
+                if image_id:
+                    return f"https://images-na.ssl-images-amazon.com/images/I/{image_id}"
+            return None
         except Exception as e:
             logger.warning("Keepa画像取得エラー (%s): %s", asin, e)
             return None
