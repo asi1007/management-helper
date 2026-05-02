@@ -13,18 +13,18 @@ from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
 
 logger = logging.getLogger(__name__)
 
-STATUS_COL = "ステータス推測値"
-INVENTORY_COL = "在庫数推測値"
-RECEIVED_DATE_COL = "受領日推測値"
+INVENTORY_COL = "在庫数"
+RECEIVED_DATE_COL = "受領日"
+TARGET_STATUSES = ["納品中", "自宅発送"]
 
 
 def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
     creator = InboundPlanCreator(access_token)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
-    sheet.filter("状態", ["納品中"])
+    sheet.filter("状態", TARGET_STATUSES)
     if not sheet.data:
-        logger.info("納品中の行がありません")
+        logger.info("対象行(%s)がありません", "/".join(TARGET_STATUSES))
         return
     status_cache: dict[str, str] = {}
     items_cache: dict[str, list[dict[str, Any]]] = {}
@@ -55,9 +55,7 @@ def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> Non
             is_received = diff_ratio <= 0.1
         if is_received:
             row_num = row.row_number
-            status_col = sheet._get_column_index_by_name(STATUS_COL) + 1
             inv_col = sheet._get_column_index_by_name(INVENTORY_COL) + 1
-            sheet.write_cell(row_num, status_col, "在庫あり")
             received_qty = qty_received if qty_received > 0 else purchase_qty
             sheet.write_cell(row_num, inv_col, received_qty)
             try:
