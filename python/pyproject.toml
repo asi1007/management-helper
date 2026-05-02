@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "management-helper"
-version = "0.5.0"
+version = "0.5.1"
 description = "仕入管理・ラベル印刷自動化ツール"
 requires-python = ">=3.12"
 license = {text = "MIT"}

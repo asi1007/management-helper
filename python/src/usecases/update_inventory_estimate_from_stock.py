@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import logging
 
+import gspread
+
 from shared.config import AppConfig
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
 
 logger = logging.getLogger(__name__)
 
-STATUS_COL = "ステータス推測値"
-INVENTORY_COL = "在庫数推測値"
+INVENTORY_COL = "在庫数"
 
 
 def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
@@ -24,8 +25,8 @@ def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> 
         asin = str(row.get("ASIN") or "").strip()
         if asin:
             asin_groups.setdefault(asin, []).append(row)
-    status_col = sheet._get_column_index_by_name(STATUS_COL) + 1
     inv_col = sheet._get_column_index_by_name(INVENTORY_COL) + 1
+    updates: list[dict] = []
     for asin, rows in asin_groups.items():
         available = asin_to_stock.get(asin, 0)
         remaining = available
@@ -33,10 +34,14 @@ def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> 
             purchase_qty = int(row.get("購入数") or 0)
             estimated = min(purchase_qty, remaining)
             remaining = max(0, remaining - estimated)
-            sheet.write_cell(row.row_number, inv_col, estimated)
-            new_status = "在庫なし" if estimated == 0 else "在庫あり"
-            sheet.write_cell(row.row_number, status_col, new_status)
-            logger.info("行%d: ASIN=%s, 在庫推測=%d, ステータス=%s", row.row_number, asin, estimated, new_status)
+            existing = int(row.get(INVENTORY_COL) or 0)
+            if estimated != existing:
+                cell = gspread.utils.rowcol_to_a1(row.row_number, inv_col)
+                updates.append({"range": cell, "values": [[estimated]]})
+            logger.info("行%d: ASIN=%s, 在庫推測=%d (既存=%d)", row.row_number, asin, estimated, existing)
+    if updates:
+        sheet._worksheet.batch_update(updates, value_input_option="USER_ENTERED")
+    logger.info("在庫数更新完了: written=%d, asins=%d", len(updates), len(asin_groups))
 
 
 def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> dict[str, int]:
@@ -50,20 +55,29 @@ def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> 
     if not all_values:
         return {}
     headers = [str(h).strip() for h in all_values[0]]
-    asin_col = headers.index("ASIN") if "ASIN" in headers else None
-    available_col = headers.index("販売可能") if "販売可能" in headers else None
+    asin_col = next((i for i, h in enumerate(headers) if h.lower() == "asin"), None)
+    available_col = next((i for i, h in enumerate(headers) if "販売可能" in h), None)
     if asin_col is None or available_col is None:
-        logger.warning("stockシートにASINまたは販売可能列がありません")
+        logger.warning("stockシートにASINまたは販売可能列がありません: headers=%s", headers)
         return {}
     result: dict[str, int] = {}
     for row_values in all_values[1:]:
         if len(row_values) <= max(asin_col, available_col):
             continue
         asin = str(row_values[asin_col]).strip()
-        try:
-            stock = int(row_values[available_col])
-        except (ValueError, TypeError):
-            stock = 0
+        stock = _parse_stock_quantity(row_values[available_col])
         if asin:
             result[asin] = result.get(asin, 0) + stock
     return result
+
+
+def _parse_stock_quantity(value: object) -> int:
+    if value is None:
+        return 0
+    text = str(value).replace(",", "").strip()
+    if not text:
+        return 0
+    try:
+        return int(text)
+    except (ValueError, TypeError):
+        return 0
