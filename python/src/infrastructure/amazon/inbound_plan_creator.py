@@ -138,12 +138,15 @@ class InboundPlanCreator:
         return data.get("shipments", data.get("body", {}).get("shipments", []))
 
     def get_shipment_status(self, shipment_id: str) -> str:
-        url = f"{API_BASE_V0}/shipments/{shipment_id}"
-        params = {"MarketplaceId": DEFAULT_MARKETPLACE_ID}
+        url = f"{API_BASE_V0}/shipments"
+        params = {
+            "MarketplaceId": DEFAULT_MARKETPLACE_ID,
+            "ShipmentIdList": shipment_id,
+            "QueryType": "SHIPMENT",
+        }
         response = httpx.get(url, params=params, headers=self._headers, timeout=30.0)
         data = response.json()
-        payload = data.get("payload", {})
-        members = payload.get("ShipmentData", payload.get("MemberList", []))
+        members = data.get("payload", {}).get("ShipmentData", [])
         if isinstance(members, list) and members:
             return members[0].get("ShipmentStatus", "")
         return ""

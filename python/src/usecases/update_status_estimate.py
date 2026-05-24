@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 INVENTORY_COL = "在庫数"
 RECEIVED_DATE_COL = "受領日"
-TARGET_STATUSES = ["納品中", "自宅発送"]
+TARGET_STATUSES = ["納品中", "自宅発送", "発送済み"]
 
 
 def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
@@ -44,16 +44,9 @@ def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> Non
                 logger.warning("shipmentStatus取得失敗 (%s): %s", shipment_id, e)
                 continue
         status = status_cache.get(shipment_id, "")
-        is_closed = status == "CLOSED"
         all_items = _get_all_items(creator, inbound_plan_id, shipment_id, items_cache)
         qty_shipped, qty_received = _sum_quantities_for_sku(all_items, sku)
-        is_received = False
-        if is_closed:
-            is_received = True
-        elif qty_shipped > 0 and qty_received > 0:
-            diff_ratio = abs(qty_shipped - qty_received) / qty_shipped
-            is_received = diff_ratio <= 0.1
-        if is_received:
+        if _is_received(status, qty_shipped, qty_received):
             row_num = row.row_number
             inv_col = sheet._get_column_index_by_name(INVENTORY_COL) + 1
             received_qty = qty_received if qty_received > 0 else purchase_qty
@@ -68,6 +61,14 @@ def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> Non
             logger.info("行%d: まだ納品中 (status=%s, shipped=%d, received=%d)", row.row_number, status, qty_shipped, qty_received)
 
 
+def _is_received(status: str, qty_shipped: int, qty_received: int) -> bool:
+    if status == "CLOSED" and qty_shipped > 0:
+        return True
+    if qty_shipped > 0 and qty_received > 0:
+        return abs(qty_shipped - qty_received) / qty_shipped <= 0.1
+    return False
+
+
 def _extract_plan_identifier(cell_value: str) -> dict[str, str] | None:
     hyperlink_match = re.search(r'HYPERLINK\("([^"]+)"', cell_value)
     url = hyperlink_match.group(1) if hyperlink_match else cell_value
@@ -75,7 +76,7 @@ def _extract_plan_identifier(cell_value: str) -> dict[str, str] | None:
     wf_match = re.search(r"wf=(wf[a-zA-Z0-9]+)", url)
     if wf_match:
         result["inboundPlanId"] = wf_match.group(1)
-    fba_match = re.search(r"(FBA[A-Z0-9]+)", url)
+    fba_match = re.search(r"(FBA[A-Z0-9]{9})", url)
     if fba_match:
         result["shipmentId"] = fba_match.group(1)
     return result if result else None
