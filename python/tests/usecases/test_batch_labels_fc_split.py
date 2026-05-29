@@ -43,3 +43,80 @@ def test_check_fc_split_single_group_passes(mocker):
     call_args = sheet.write_trial_plan_url.call_args
     assert call_args.args[0] == rows  # 行リスト
     assert "wf111" in call_args.args[1]  # URL or plan_id
+
+
+def test_check_fc_split_two_groups_raises(mocker):
+    """2 packingGroups なら RuntimeError、行番号が表示される"""
+    rows = [_row(340, "SKU_A"), _row(341, "SKU_B"), _row(342, "SKU_C")]
+    groups = {"ノーマル": rows}
+    sheet = mocker.Mock()
+    packing_groups = [
+        {"packingGroupId": "pg-aaa", "items": [{"msku": "SKU_A"}, {"msku": "SKU_B"}]},
+        {"packingGroupId": "pg-bbb", "items": [{"msku": "SKU_C"}]},
+    ]
+    creator = _make_creator_mock(mocker, "wf222", packing_groups)
+
+    with pytest.raises(RuntimeError, match=r"FC分割を検知"):
+        _check_fc_split_for_all_groups(groups, creator, sheet)
+
+    # 分割時は URL 書き込みなし
+    sheet.write_trial_plan_url.assert_not_called()
+
+
+def test_check_fc_split_report_contains_row_numbers(mocker, capsys):
+    """分割時に各グループのSKUと行番号が表示される"""
+    rows = [_row(340, "SKU_A"), _row(341, "SKU_B"), _row(342, "SKU_C")]
+    groups = {"ノーマル": rows}
+    sheet = mocker.Mock()
+    packing_groups = [
+        {"packingGroupId": "pg-aaa", "items": [{"msku": "SKU_A"}, {"msku": "SKU_B"}]},
+        {"packingGroupId": "pg-bbb", "items": [{"msku": "SKU_C"}]},
+    ]
+    creator = _make_creator_mock(mocker, "wf333", packing_groups)
+
+    with pytest.raises(RuntimeError):
+        _check_fc_split_for_all_groups(groups, creator, sheet)
+
+    captured = capsys.readouterr()
+    out = captured.err + captured.out
+    assert "ノーマル" in out
+    assert "wf333" in out
+    assert "340" in out
+    assert "341" in out
+    assert "342" in out
+    assert "pg-aaa" in out
+    assert "pg-bbb" in out
+
+
+def test_check_fc_split_multiple_groups_split(mocker, capsys):
+    """複数グループそれぞれが分割した場合、両方のサマリーが表示される"""
+    rows_n = [_row(340, "N_A"), _row(341, "N_B")]
+    rows_f = [_row(350, "F_A"), _row(351, "F_B")]
+    groups = {"ノーマル": rows_n, "ファッション": rows_f}
+    sheet = mocker.Mock()
+
+    creator = mocker.Mock()
+    creator.create_plan.side_effect = [
+        {"inboundPlanId": "wfN1", "link": "url-N"},
+        {"inboundPlanId": "wfF1", "link": "url-F"},
+    ]
+    creator.get_packing_groups.side_effect = [
+        [
+            {"packingGroupId": "pg-n1", "items": [{"msku": "N_A"}]},
+            {"packingGroupId": "pg-n2", "items": [{"msku": "N_B"}]},
+        ],
+        [
+            {"packingGroupId": "pg-f1", "items": [{"msku": "F_A"}]},
+            {"packingGroupId": "pg-f2", "items": [{"msku": "F_B"}]},
+        ],
+    ]
+
+    with pytest.raises(RuntimeError, match=r"2グループ"):
+        _check_fc_split_for_all_groups(groups, creator, sheet)
+
+    captured = capsys.readouterr()
+    out = captured.err + captured.out
+    assert "ノーマル" in out
+    assert "ファッション" in out
+    assert "wfN1" in out
+    assert "wfF1" in out
