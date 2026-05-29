@@ -120,3 +120,33 @@ def test_check_fc_split_multiple_groups_split(mocker, capsys):
     assert "ファッション" in out
     assert "wfN1" in out
     assert "wfF1" in out
+
+
+def test_check_fc_split_partial_split_blocks_all_writes(mocker, capsys):
+    """グループA: 1個 OK, グループB: 2個分割 → 全グループ停止、A の URL も書き込まれない"""
+    rows_a = [_row(340, "A_1")]
+    rows_b = [_row(350, "B_1"), _row(351, "B_2")]
+    groups = {"ノーマル": rows_a, "ファッション": rows_b}
+    sheet = mocker.Mock()
+
+    creator = mocker.Mock()
+    creator.create_plan.side_effect = [
+        {"inboundPlanId": "wfA", "link": "url-A"},
+        {"inboundPlanId": "wfB", "link": "url-B"},
+    ]
+    creator.get_packing_groups.side_effect = [
+        [{"packingGroupId": "pg-a", "items": [{"msku": "A_1"}]}],
+        [
+            {"packingGroupId": "pg-b1", "items": [{"msku": "B_1"}]},
+            {"packingGroupId": "pg-b2", "items": [{"msku": "B_2"}]},
+        ],
+    ]
+
+    with pytest.raises(RuntimeError, match=r"1グループ"):
+        _check_fc_split_for_all_groups(groups, creator, sheet)
+
+    sheet.write_trial_plan_url.assert_not_called()
+    captured = capsys.readouterr()
+    out = captured.err + captured.out
+    assert "ファッション" in out
+    # ノーマルは分割していないので明示的に[ノーマル]の試作プラン報告は出ない
