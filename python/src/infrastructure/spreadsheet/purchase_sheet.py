@@ -56,6 +56,13 @@ class PurchaseSheet(BaseSheet):
                 self.write_cell(row_num, plan_col, inbound_plan_id)
             self.write_cell(row_num, ship_date_col, today)
 
+    def write_trial_plan_url(self, rows: list[Any], url: str, plan_id: str) -> None:
+        plan_col = self._get_column_index_by_name("納品プラン") + 1
+        display = plan_id[:10] if plan_id else "trial"
+        formula = f'=HYPERLINK("{url}","{display}")'
+        for row in rows:
+            self.write_formula(row.row_number, plan_col, formula)
+
     def decrease_purchase_quantity(self, quantity: int) -> list[int]:
         qty_col = self._get_column_index_by_name("購入数") + 1
         zero_rows: list[int] = []
