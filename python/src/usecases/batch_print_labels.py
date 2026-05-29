@@ -13,6 +13,7 @@ from shared.config import AppConfig
 from domain.label.services.label_aggregator import LabelAggregator
 from infrastructure.amazon.auth import get_auth_token
 from infrastructure.amazon.downloader import Downloader
+from infrastructure.amazon.inbound_plan_creator import InboundPlanCreator
 from infrastructure.spreadsheet.base_row import BaseRow
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.instruction_sheet import InstructionSheet
@@ -56,6 +57,10 @@ def batch_print_labels(
     asin_map = sales.load_asin_to_sku_fnsku()
     sheet.fill_missing_sku_fnsku_from_sales(asin_map)
     _validate_no_blank_sku(sheet.data)
+
+    click.echo("\n[FC分割pre-check] 試作プランを作成して packingGroups を確認...")
+    creator = InboundPlanCreator(auth_token=access_token)
+    _check_fc_split_for_all_groups(non_home_groups, creator, sheet)
 
     click.echo(f"\n{len(non_home_groups)}グループを処理します")
     click.echo("=" * 50)

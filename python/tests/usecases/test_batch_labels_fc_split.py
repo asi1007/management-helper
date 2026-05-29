@@ -150,3 +150,49 @@ def test_check_fc_split_partial_split_blocks_all_writes(mocker, capsys):
     out = captured.err + captured.out
     assert "ファッション" in out
     # ノーマルは分割していないので明示的に[ノーマル]の試作プラン報告は出ない
+
+
+def test_batch_print_labels_invokes_fc_split_check(mocker):
+    """batch_print_labels の処理順序で _check_fc_split_for_all_groups が呼ばれる"""
+    from src.usecases import batch_print_labels as mod
+
+    # SP-API auth と sheet を mock
+    mocker.patch.object(mod, "get_auth_token", return_value="token")
+
+    # PurchaseSheet を mock。filter後 1グループ分のデータが返る想定
+    rows = [_row(340, "SKU_A"), _row(341, "SKU_B")]
+    mock_sheet_cls = mocker.patch.object(mod, "PurchaseSheet")
+    mock_sheet = mock_sheet_cls.return_value
+    mock_sheet.data = rows
+
+    # SalesSheet も mock (batch_print_labels 内で local import されるため実モジュールパスでパッチ)
+    mock_sales_cls = mocker.patch("infrastructure.spreadsheet.sales_sheet.SalesSheet")
+    mock_sales_cls.return_value.load_asin_to_sku_fnsku.return_value = {}
+
+    # InboundPlanCreator を mock (FC分割なし)
+    mock_creator_cls = mocker.patch.object(mod, "InboundPlanCreator")
+    mock_creator_cls.return_value.create_plan.return_value = {
+        "inboundPlanId": "wfX", "link": "url-X"
+    }
+    mock_creator_cls.return_value.get_packing_groups.return_value = [{"packingGroupId": "pg-x"}]
+
+    # ラベル生成以降は実行しないように short-circuit
+    mocker.patch.object(mod, "_create_label_pdf", return_value=[])
+    mocker.patch.object(mod, "_create_instruction_sheet", return_value=Path("/tmp/dummy.xlsx"))
+    mocker.patch.object(mod, "_create_inspection_sheet", return_value=None)
+    mocker.patch.object(mod, "_write_to_sheet")
+    mocker.patch.object(mod, "_send_chatwork_by_group")
+    mocker.patch.object(mod, "_print_summary")
+
+    config = mocker.Mock()
+    config.chatwork_api_token = None
+    config.chatwork_room_id = None
+    repo = mocker.Mock()
+
+    mod.batch_print_labels(config, repo, category_filter=["ノーマル"])
+
+    # FC分割チェックが create_plan を呼んだことを確認
+    mock_creator_cls.return_value.create_plan.assert_called_once()
+    mock_creator_cls.return_value.get_packing_groups.assert_called_once()
+    # OK だったので write_trial_plan_url が呼ばれる
+    mock_sheet.write_trial_plan_url.assert_called_once()
