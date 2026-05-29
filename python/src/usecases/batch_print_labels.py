@@ -105,15 +105,125 @@ def batch_print_labels(
 
 
 def _validate_no_blank_sku(rows: list[BaseRow]) -> None:
-    blank_rows: list[int] = []
+    _validate_sku_fnsku(rows)
+
+
+def _detect_missing_rows(requested_rows: list[BaseRow], processed_row_numbers: list[int]) -> list[int]:
+    """依頼対象に含まれていたが、処理 (ラベル生成や指示書登載) で漏れた行番号を返す"""
+    processed_set = set(processed_row_numbers)
+    missing: list[int] = []
+    for row in requested_rows:
+        if row.row_number not in processed_set:
+            missing.append(row.row_number)
+    return missing
+
+
+def _verify_label_quantity(items: list[dict], actual_pages: int) -> None:
+    """ラベル PDF ページ数が指示書 SKU 数量から計算した期待値と乖離していたらエラー"""
+    import math
+    expected = sum(math.ceil(int(it["quantity"]) / 40) for it in items if int(it.get("quantity", 0)) > 0)
+    if expected == 0:
+        return
+    diff = abs(actual_pages - expected)
+    tolerance = max(int(expected * 0.2), 2)  # 20% or 2ページ
+    if diff > tolerance:
+        raise RuntimeError(
+            f"ラベル数と指示書数量の不一致 (乖離): 期待ページ={expected}, 実ページ={actual_pages}, 差={diff}, 許容={tolerance}。"
+            "SKU集約・ラベル分割・SP-API応答のいずれかの不整合の可能性。"
+        )
+
+
+def _validate_sku_fnsku(rows: list[BaseRow]) -> None:
+    blank_sku: list[int] = []
+    blank_fnsku: list[int] = []
     for row in rows:
         sku = str(row.get("SKU") or "").strip()
+        fnsku = str(row.get("FNSKU") or "").strip()
         if not sku:
-            blank_rows.append(row.row_number)
-    if blank_rows:
-        row_str = ", ".join(str(r) for r in blank_rows)
-        raise RuntimeError(f"SKUが空白の行があります（行番号: {row_str}）。SKUを入力してから再実行してください。")
+            blank_sku.append(row.row_number)
+        if not fnsku:
+            blank_fnsku.append(row.row_number)
 
+    errors: list[str] = []
+    if blank_sku:
+        errors.append(f"SKU空白の行: {', '.join(str(r) for r in blank_sku)}")
+    if blank_fnsku:
+        errors.append(f"FNSKU空白の行: {', '.join(str(r) for r in blank_fnsku)}")
+    if errors:
+        raise RuntimeError(
+            "SKU/FNSKU検証エラー: " + " / ".join(errors) +
+            "。Amazon側でSKU/FNSKUを発行してから再実行してください。"
+        )
+
+
+
+def _check_fc_split_for_all_groups(
+    non_home_groups: dict[str, list[BaseRow]],
+    creator: Any,
+    sheet: Any,
+) -> None:
+    """各グループで試作プランを作成し packingGroups の数を取得。1グループ→URL書き込み、2+→RuntimeError"""
+    split_reports: list[str] = []
+    plan_results: list[tuple[str, list[BaseRow], str, str]] = []  # (category, rows, plan_id, plan_url)
+
+    for category, rows in non_home_groups.items():
+        items = _build_items_from_rows(rows)
+        result = creator.create_plan(items)
+        plan_id = result["inboundPlanId"]
+        plan_url = result["link"]
+
+        groups = creator.get_packing_groups(plan_id)
+        if len(groups) > 1:
+            sku_to_row = {str(r.get("SKU") or "").strip(): r.row_number for r in rows}
+            split_reports.append(_format_split_report(category, plan_id, plan_url, groups, sku_to_row))
+        else:
+            plan_results.append((category, rows, plan_id, plan_url))
+
+    if split_reports:
+        click.echo("\n".join(split_reports), err=True)
+        raise RuntimeError(
+            f"FC分割を検知 ({len(split_reports)}グループ)。"
+            "仕入管理シートの「納品分類」列をグループ別に書き換えてから再実行してください。"
+        )
+
+    for _category, rows, plan_id, plan_url in plan_results:
+        sheet.write_trial_plan_url(rows, plan_url, plan_id)
+
+
+def _build_items_from_rows(rows: list[BaseRow]) -> dict[str, dict[str, Any]]:
+    aggregated: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        sku = str(row.get("SKU") or "").strip()
+        asin = str(row.get("ASIN") or "").strip()
+        try:
+            quantity = int(row.get("購入数") or 0)
+        except (ValueError, TypeError):
+            quantity = 0
+        if not sku or quantity <= 0:
+            continue
+        if sku not in aggregated:
+            aggregated[sku] = {"msku": sku, "asin": asin, "quantity": 0, "labelOwner": "SELLER"}
+        aggregated[sku]["quantity"] += quantity
+    return aggregated
+
+
+def _format_split_report(
+    category: str,
+    plan_id: str,
+    plan_url: str,
+    packing_groups: list[dict[str, Any]],
+    sku_to_row: dict[str, int],
+) -> str:
+    lines = [f"\n[{category}] 試作プラン: {plan_id} ({len(packing_groups)}グループに分割)"]
+    for i, pg in enumerate(packing_groups, 1):
+        pg_id = pg.get("packingGroupId", "")
+        items = pg.get("items", [])
+        skus = [str(it.get("msku", "")).strip() for it in items if it.get("msku")]
+        row_numbers = sorted({sku_to_row[s] for s in skus if s in sku_to_row})
+        rows_str = ", ".join(str(r) for r in row_numbers) if row_numbers else "(行不明)"
+        lines.append(f"  グループ{i} ({pg_id}): 行{rows_str} ({len(skus)} SKUs)")
+    lines.append(f"  プランURL: {plan_url}")
+    return "\n".join(lines)
 
 
 def _group_by_delivery_category(rows: list[BaseRow]) -> dict[str, list[BaseRow]]:
@@ -135,7 +245,37 @@ def _create_label_pdf(data: list[Any], access_token: str, config: AppConfig, cat
     file_name = f"{date_str}_{category}"
     sku_nums = [item.to_msku_quantity() for item in items]
     result = downloader.download_labels(sku_nums, file_name)
-    return result.get("paths", [result["path"]])
+    paths = result.get("paths", [result["path"]])
+    _check_label_pdf_pages(paths, sku_nums, category)
+    return paths
+
+
+def _check_label_pdf_pages(pdf_paths: list[str], sku_nums: list[dict], category: str) -> None:
+    """PDF合計ページ数 vs SKU別ceil(qty/40)合計 を検証。乖離があれば RuntimeError"""
+    total_pages = 0
+    for p in pdf_paths:
+        try:
+            from pypdf import PdfReader
+            total_pages += len(PdfReader(p).pages)
+        except ImportError:
+            try:
+                import subprocess
+                out = subprocess.check_output(["mdls", "-name", "kMDItemNumberOfPages", "-raw", p], timeout=10).decode().strip()
+                if out and out.isdigit():
+                    total_pages += int(out)
+            except Exception as e:
+                logger.warning("PDFページ数取得失敗 (%s): %s -> 検証スキップ", p, e)
+                return
+        except Exception as e:
+            logger.warning("PDFページ数取得失敗 (%s): %s -> 検証スキップ", p, e)
+            return
+    items = [{"sku": s.get("msku", ""), "quantity": s.get("quantity", 0)} for s in sku_nums]
+    try:
+        _verify_label_quantity(items, total_pages)
+        logger.info("[%s] ラベル検証OK: 期待=SKU別ceil合計, 実=%dページ", category, total_pages)
+    except RuntimeError as e:
+        click.echo(f"⚠️ [{category}] {e}", err=True)
+        raise
 
 
 def _print_summary(groups: dict[str, list[BaseRow]]) -> None:
