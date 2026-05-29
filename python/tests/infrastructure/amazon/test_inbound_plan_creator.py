@@ -29,3 +29,37 @@ def test_get_shipment_status_empty_when_no_data(mocker):
     )
 
     assert creator.get_shipment_status("FBA000000000") == ""
+
+
+def test_get_packing_groups_returns_list(mocker):
+    creator = InboundPlanCreator("token")
+    mock_resp = mocker.Mock()
+    mock_resp.json.return_value = {
+        "packingGroups": [
+            {"packingGroupId": "pg-aaa"},
+            {"packingGroupId": "pg-bbb"},
+        ]
+    }
+    mock_resp.raise_for_status = mocker.Mock()
+    mock_get = mocker.patch(
+        "infrastructure.amazon.inbound_plan_creator.httpx.get", return_value=mock_resp
+    )
+
+    groups = creator.get_packing_groups("wf123")
+
+    assert len(groups) == 2
+    assert groups[0]["packingGroupId"] == "pg-aaa"
+    called_url = mock_get.call_args[0][0]
+    assert called_url.endswith("/inboundPlans/wf123/packingGroups")
+
+
+def test_get_packing_groups_empty_when_no_data(mocker):
+    creator = InboundPlanCreator("token")
+    mock_resp = mocker.Mock()
+    mock_resp.json.return_value = {}
+    mock_resp.raise_for_status = mocker.Mock()
+    mocker.patch(
+        "infrastructure.amazon.inbound_plan_creator.httpx.get", return_value=mock_resp
+    )
+
+    assert creator.get_packing_groups("wf000") == []

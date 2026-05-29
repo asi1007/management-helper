@@ -194,6 +194,13 @@ class InboundPlanCreator:
             raise RuntimeError("packingGroupが見つかりません")
         return groups[0].get("packingGroupId", groups[0]) if isinstance(groups[0], dict) else groups[0]
 
+    def get_packing_groups(self, inbound_plan_id: str) -> list[dict[str, Any]]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingGroups"
+        response = httpx.get(url, headers=self._headers, timeout=30.0)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("packingGroups", [])
+
     def get_packing_group_items(self, inbound_plan_id: str, packing_group_id: str) -> list[dict[str, Any]]:
         url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingGroups/{packing_group_id}/items"
         response = httpx.get(url, headers=self._headers, timeout=30.0)
