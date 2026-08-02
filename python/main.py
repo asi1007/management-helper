@@ -125,6 +125,13 @@ def update_inventory() -> None:
 
 
 @cli.command()
+def archive_out_of_stock() -> None:
+    from usecases.archive_out_of_stock import archive_out_of_stock as _archive
+    config, repo = _get_config_and_repo()
+    _archive(config, repo)
+
+
+@cli.command()
 @click.argument("row_numbers", nargs=-1, type=int, required=True)
 def split_row(row_numbers: tuple[int, ...]) -> None:
     from usecases.split_row import split_row as _split
