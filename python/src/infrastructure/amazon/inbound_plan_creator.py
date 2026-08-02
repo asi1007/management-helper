@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 API_BASE_2024 = "https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20"
 API_BASE_V0 = "https://sellingpartnerapi-fe.amazon.com/fba/inbound/v0"
+MAX_ITEM_PAGES = 50
 POLL_INTERVAL_SEC = 5
 POLL_TIMEOUT_SEC = 300
 MAX_RETRIES = 3
@@ -152,22 +153,34 @@ class InboundPlanCreator:
         return ""
 
     def get_shipment_items(self, shipment_id: str) -> list[dict[str, Any]]:
-        try:
-            url = f"{API_BASE_2024}/shipments/{shipment_id}/items"
-            response = httpx.get(url, headers=self._headers, timeout=30.0)
-            if response.status_code == 200:
-                data = response.json()
-                items = data.get("items", [])
-                if items:
-                    return items
-        except Exception:
-            pass
+        items_by_sku: dict[str, dict[str, Any]] = {}
+        seen_tokens: set[str] = set()
+        next_token: str | None = None
+        for _ in range(MAX_ITEM_PAGES):
+            page_items, next_token = self._fetch_items_page(shipment_id, next_token)
+            added_new = False
+            for item in page_items:
+                sku = str(item.get("SellerSKU", item.get("msku", item.get("sellerSku", "")))).strip()
+                if not sku or sku in items_by_sku:
+                    continue
+                items_by_sku[sku] = item
+                added_new = True
+            if not next_token or next_token in seen_tokens or not added_new:
+                break
+            seen_tokens.add(next_token)
+        return list(items_by_sku.values())
+
+    def _fetch_items_page(
+        self, shipment_id: str, next_token: str | None
+    ) -> tuple[list[dict[str, Any]], str | None]:
         url = f"{API_BASE_V0}/shipments/{shipment_id}/items"
-        params = {"MarketplaceId": DEFAULT_MARKETPLACE_ID}
+        params: dict[str, Any] = {"MarketplaceId": DEFAULT_MARKETPLACE_ID}
+        if next_token:
+            params["NextToken"] = next_token
         response = httpx.get(url, params=params, headers=self._headers, timeout=30.0)
         data = response.json()
         payload = data.get("payload", {})
-        return payload.get("ItemData", [])
+        return payload.get("ItemData", []), payload.get("NextToken")
 
     def get_plan_quantity_totals(self, inbound_plan_id: str) -> dict[str, Any]:
         shipments = self.list_shipments(inbound_plan_id)
