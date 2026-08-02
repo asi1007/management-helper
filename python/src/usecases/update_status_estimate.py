@@ -10,6 +10,7 @@ from infrastructure.amazon.auth import get_auth_token
 from infrastructure.amazon.inbound_plan_creator import InboundPlanCreator
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
+from usecases.fill_sku_fnsku_from_shipment import fill_sku_fnsku_from_shipment
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ TARGET_STATUSES = ["納品中", "自宅発送", "発送済み"]
 
 
 def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
+    fill_sku_fnsku_from_shipment(config, repo)
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
     creator = InboundPlanCreator(access_token)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)

@@ -132,6 +132,13 @@ def archive_out_of_stock() -> None:
 
 
 @cli.command()
+def fill_sku_fnsku() -> None:
+    from usecases.fill_sku_fnsku_from_shipment import fill_sku_fnsku_from_shipment
+    config, repo = _get_config_and_repo()
+    fill_sku_fnsku_from_shipment(config, repo)
+
+
+@cli.command()
 @click.argument("row_numbers", nargs=-1, type=int, required=True)
 def split_row(row_numbers: tuple[int, ...]) -> None:
     from usecases.split_row import split_row as _split
