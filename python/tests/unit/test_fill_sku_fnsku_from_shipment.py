@@ -77,6 +77,45 @@ def test_fills_missing_fnsku_and_both(monkeypatch):
     assert "C6" not in cells and "D6" not in cells
 
 
+def test_fills_fnsku_for_shipped_row_with_stale_status(monkeypatch):
+    # 状態が「未発送」のまま(実態は発送済み)でも、納品プラン(FBA shipment ID)があれば補完する
+    header = ["状態", "ASIN", "SKU", "FNSKU", "納品プラン"]
+    values = [["", "", "", "", ""]] * 3 + [
+        header,
+        ["未発送", "B0G3NFCMBJ", "BW-5Z8A-WYZV-10", "", "FBA15GBW9JMD"],
+    ]
+    ws = FakeWorksheet(values)
+    items = {
+        "FBA15GBW9JMD": [
+            {"SellerSKU": "BW-5Z8A-WYZV-10", "FulfillmentNetworkSKU": "X0FNSKU01"}
+        ]
+    }
+    monkeypatch.setattr(mod, "get_auth_token", lambda *a, **k: "tok")
+    monkeypatch.setattr(mod, "InboundPlanCreator", lambda tok: FakeCreator(items))
+
+    mod.fill_sku_fnsku_from_shipment(FakeConfig(), FakeRepo(ws))
+
+    flat = []
+    for data, _ in ws.batched:
+        flat.extend(data)
+    cells = {d["range"]: d["values"][0][0] for d in flat}
+    assert cells.get("D5") == "X0FNSKU01"
+
+
+def test_skips_row_without_shipment_id_regardless_of_status(monkeypatch):
+    # 納品プランが無い行は状態に関わらず対象外
+    header = ["状態", "ASIN", "SKU", "FNSKU", "納品プラン"]
+    values = [["", "", "", "", ""]] * 3 + [
+        header,
+        ["未発送", "B0Q", "SKU-Q", "", ""],
+    ]
+    ws = FakeWorksheet(values)
+    monkeypatch.setattr(mod, "get_auth_token", lambda *a, **k: "tok")
+    monkeypatch.setattr(mod, "InboundPlanCreator", lambda tok: FakeCreator({}))
+    mod.fill_sku_fnsku_from_shipment(FakeConfig(), FakeRepo(ws))
+    assert ws.batched == []
+
+
 def test_noop_when_nothing_to_fill(monkeypatch):
     header = ["状態", "ASIN", "SKU", "FNSKU", "納品プラン"]
     values = [["", "", "", "", ""]] * 3 + [header, ["発送済み", "B0Z", "SKU-Z", "FN-Z", "FBA15GCCCCCC"]]

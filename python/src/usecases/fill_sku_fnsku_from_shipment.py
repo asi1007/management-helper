@@ -13,8 +13,6 @@ from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
 
 logger = logging.getLogger(__name__)
 
-TARGET_STATUSES = ["発送済み", "自宅発送", "納品中"]
-STATUS_COL = "状態"
 ASIN_COL = "ASIN"
 SKU_COL = "SKU"
 FNSKU_COL = "FNSKU"
@@ -33,8 +31,6 @@ def fill_sku_fnsku_from_shipment(config: AppConfig, repo: BaseSheetsRepository) 
 
     updates: list[dict] = []
     for row in sheet.all_data:
-        if str(row.get(STATUS_COL) or "").strip() not in TARGET_STATUSES:
-            continue
         cur_sku = str(row.get(SKU_COL) or "").strip()
         cur_fnsku = str(row.get(FNSKU_COL) or "").strip()
         if cur_sku and cur_fnsku:
