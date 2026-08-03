@@ -54,7 +54,8 @@ def create_inspection_sheet_if_needed(
 
 
 def _collect_matched_items(rows: list[Any], catalog: Any) -> list[dict[str, Any]]:
-    matched: list[dict[str, Any]] = []
+    aggregated: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
     for r in rows:
         try:
             asin = str(r.get("ASIN") or "").strip()
@@ -66,6 +67,10 @@ def _collect_matched_items(rows: list[Any], catalog: Any) -> list[dict[str, Any]
         if not master_item:
             continue
         try:
+            sku = str(r.get("SKU") or "").strip()
+        except Exception:
+            sku = ""
+        try:
             order_no = str(r.get("注文番号") or "").strip()
         except Exception:
             order_no = ""
@@ -74,15 +79,36 @@ def _collect_matched_items(rows: list[Any], catalog: Any) -> list[dict[str, Any]
         except Exception:
             quantity = 0
 
-        matched.append({
-            "asin": asin,
-            "order_no": order_no,
-            "product_name": master_item.product_name,
-            "quantity": quantity,
-            "inspection_point": master_item.inspection_point,
-            "detail_instruction_url": master_item.detail_instruction_url,
-        })
-    return matched
+        key = f"{asin}|{sku}" if sku else asin
+        if key in aggregated:
+            agg = aggregated[key]
+            agg["quantity"] += quantity
+            if order_no and order_no not in agg["order_no_list"]:
+                agg["order_no_list"].append(order_no)
+        else:
+            aggregated[key] = {
+                "asin": asin,
+                "sku": sku,
+                "order_no_list": [order_no] if order_no else [],
+                "product_name": master_item.product_name,
+                "quantity": quantity,
+                "inspection_point": master_item.inspection_point,
+                "detail_instruction_url": master_item.detail_instruction_url,
+            }
+            order.append(key)
+
+    return [
+        {
+            "asin": aggregated[k]["asin"],
+            "sku": aggregated[k]["sku"],
+            "order_no": ", ".join(aggregated[k]["order_no_list"]),
+            "product_name": aggregated[k]["product_name"],
+            "quantity": aggregated[k]["quantity"],
+            "inspection_point": aggregated[k]["inspection_point"],
+            "detail_instruction_url": aggregated[k]["detail_instruction_url"],
+        }
+        for k in order
+    ]
 
 
 def _write_inspection_data(ws: Any, matched: list[dict[str, Any]], keepa_api_key: str) -> None:

@@ -35,15 +35,50 @@ class InstructionSheet:
         return file_path
 
     def _extract_rows(self, data: list[Any]) -> list[dict[str, str]]:
-        rows: list[dict[str, str]] = []
+        aggregated: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
         for row in data:
             fnsku = str(row.get("FNSKU") or "").strip()
+            if not fnsku:
+                continue
+            sku = str(row.get("SKU") or "").strip()
             asin = str(row.get("ASIN") or "").strip()
-            quantity = str(row.get("購入数") or "").strip()
+            quantity_str = str(row.get("購入数") or "").strip()
+            try:
+                quantity = int(quantity_str) if quantity_str else 0
+            except ValueError:
+                quantity = 0
             remarks = str(row.get("備考") or "").strip()
             order_number = str(row.get("注文番号") or "").strip()
-            if fnsku:
-                rows.append({"fnsku": fnsku, "asin": asin, "quantity": quantity, "remarks": remarks, "order_number": order_number})
+
+            key = sku or fnsku
+            if key in aggregated:
+                agg = aggregated[key]
+                agg["quantity"] += quantity
+                if remarks and remarks not in agg["remarks_list"]:
+                    agg["remarks_list"].append(remarks)
+                if order_number and order_number not in agg["order_numbers"]:
+                    agg["order_numbers"].append(order_number)
+            else:
+                aggregated[key] = {
+                    "fnsku": fnsku,
+                    "asin": asin,
+                    "quantity": quantity,
+                    "remarks_list": [remarks] if remarks else [],
+                    "order_numbers": [order_number] if order_number else [],
+                }
+                order.append(key)
+
+        rows: list[dict[str, str]] = []
+        for key in order:
+            agg = aggregated[key]
+            rows.append({
+                "fnsku": agg["fnsku"],
+                "asin": agg["asin"],
+                "quantity": str(agg["quantity"]),
+                "remarks": "\n".join(agg["remarks_list"]),
+                "order_number": ", ".join(agg["order_numbers"]),
+            })
         return rows
 
     def _generate_plan_name(self, data: list[Any]) -> str:
