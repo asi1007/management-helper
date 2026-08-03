@@ -18,9 +18,8 @@ def test_update_status_calls_fill_first(monkeypatch):
     monkeypatch.setattr(mod, "fill_sku_fnsku_from_shipment", lambda config, repo: calls.append("fill"))
 
     class FakeSheet:
-        data = []
+        all_data = []
         def __init__(self, *a, **k): pass
-        def filter(self, *a, **k): calls.append("filter")
 
     monkeypatch.setattr(mod, "PurchaseSheet", FakeSheet)
 

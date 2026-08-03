@@ -8,6 +8,7 @@ from typing import Any
 from shared.config import AppConfig
 from infrastructure.amazon.auth import get_auth_token
 from infrastructure.amazon.inbound_plan_creator import InboundPlanCreator
+from infrastructure.spreadsheet.base_row import BaseRow
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
 from usecases.fill_sku_fnsku_from_shipment import fill_sku_fnsku_from_shipment
@@ -16,7 +17,9 @@ logger = logging.getLogger(__name__)
 
 INVENTORY_COL = "在庫数"
 RECEIVED_DATE_COL = "受領日"
-TARGET_STATUSES = ["納品中", "自宅発送", "発送済み"]
+STATUS_COL = "状態"
+PLAN_COL = "納品プラン"
+EXCLUDED_STATUSES = ("在庫あり", "在庫なし")
 
 
 def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
@@ -24,13 +27,14 @@ def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> Non
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
     creator = InboundPlanCreator(access_token)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
-    sheet.filter("状態", TARGET_STATUSES)
-    if not sheet.data:
-        logger.info("対象行(%s)がありません", "/".join(TARGET_STATUSES))
+    target_rows = _select_target_rows(sheet)
+    if not target_rows:
+        logger.info("納品プランを持つ未受領行がありません")
         return
+    logger.info("対象行: %d件", len(target_rows))
     status_cache: dict[str, str] = {}
     items_cache: dict[str, list[dict[str, Any]]] = {}
-    for row in sheet.data:
+    for row in target_rows:
         plan_cell = str(row.get("納品プラン") or "").strip()
         sku = str(row.get("SKU") or "").strip()
         purchase_qty = int(row.get("購入数") or 0)
@@ -61,6 +65,20 @@ def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> Non
             logger.info("行%d: 納品済み (status=%s, shipped=%d, received=%d)", row_num, status, qty_shipped, qty_received)
         else:
             logger.info("行%d: まだ納品中 (status=%s, shipped=%d, received=%d)", row.row_number, status, qty_shipped, qty_received)
+
+
+def _select_target_rows(sheet: PurchaseSheet) -> list[BaseRow]:
+    return [
+        row
+        for row in sheet.all_data
+        if _is_target_row(str(row.get(STATUS_COL) or ""), str(row.get(PLAN_COL) or ""))
+    ]
+
+
+def _is_target_row(status: str, plan_cell: str) -> bool:
+    if status.strip() in EXCLUDED_STATUSES:
+        return False
+    return _extract_plan_identifier(plan_cell) is not None
 
 
 def _is_received(status: str, qty_shipped: int, qty_received: int) -> bool:
