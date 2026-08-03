@@ -60,7 +60,8 @@ def batch_print_labels(
 
     click.echo("\n[FC分割pre-check] 試作プランを作成して packingGroups を確認...")
     creator = InboundPlanCreator(auth_token=access_token)
-    _check_fc_split_for_all_groups(non_home_groups, creator, sheet)
+    fc_check_groups = {k: v for k, v in non_home_groups.items() if "自宅" not in k}
+    _check_fc_split_for_all_groups(fc_check_groups, creator, sheet)
 
     click.echo(f"\n{len(non_home_groups)}グループを処理します")
     click.echo("=" * 50)

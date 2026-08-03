@@ -31,35 +31,51 @@ def test_get_shipment_status_empty_when_no_data(mocker):
     assert creator.get_shipment_status("FBA000000000") == ""
 
 
-def test_get_packing_groups_returns_list(mocker):
+def _mock_json_response(mocker, payload):
+    resp = mocker.Mock()
+    resp.json.return_value = payload
+    resp.raise_for_status = mocker.Mock()
+    return resp
+
+
+def test_get_packing_groups_uses_packing_options_endpoint(mocker):
     creator = InboundPlanCreator("token")
-    mock_resp = mocker.Mock()
-    mock_resp.json.return_value = {
-        "packingGroups": [
-            {"packingGroupId": "pg-aaa"},
-            {"packingGroupId": "pg-bbb"},
-        ]
-    }
-    mock_resp.raise_for_status = mocker.Mock()
+    responses = [
+        _mock_json_response(mocker, {"packingOptions": [{"packingGroups": ["pg-aaa", "pg-bbb"]}]}),
+        _mock_json_response(mocker, {"items": [{"msku": "SKU-A"}]}),
+        _mock_json_response(mocker, {"items": [{"msku": "SKU-B"}]}),
+    ]
     mock_get = mocker.patch(
-        "infrastructure.amazon.inbound_plan_creator.httpx.get", return_value=mock_resp
+        "infrastructure.amazon.inbound_plan_creator.httpx.get", side_effect=responses
     )
 
     groups = creator.get_packing_groups("wf123")
 
-    assert len(groups) == 2
-    assert groups[0]["packingGroupId"] == "pg-aaa"
-    called_url = mock_get.call_args[0][0]
-    assert called_url.endswith("/inboundPlans/wf123/packingGroups")
+    assert [g["packingGroupId"] for g in groups] == ["pg-aaa", "pg-bbb"]
+    assert groups[0]["items"] == [{"msku": "SKU-A"}]
+    urls = [call[0][0] for call in mock_get.call_args_list]
+    # トップレベルの /packingGroups は権限外(403)のため packingOptions 経由で ID を取る
+    assert urls[0].endswith("/inboundPlans/wf123/packingOptions")
+    assert urls[1].endswith("/inboundPlans/wf123/packingGroups/pg-aaa/items")
 
 
-def test_get_packing_groups_empty_when_no_data(mocker):
+def test_get_packing_groups_empty_when_no_packing_options(mocker):
     creator = InboundPlanCreator("token")
-    mock_resp = mocker.Mock()
-    mock_resp.json.return_value = {}
-    mock_resp.raise_for_status = mocker.Mock()
     mocker.patch(
-        "infrastructure.amazon.inbound_plan_creator.httpx.get", return_value=mock_resp
+        "infrastructure.amazon.inbound_plan_creator.httpx.get",
+        return_value=_mock_json_response(mocker, {}),
     )
 
     assert creator.get_packing_groups("wf000") == []
+
+
+def test_get_packing_group_id_returns_first_id(mocker):
+    creator = InboundPlanCreator("token")
+    mocker.patch(
+        "infrastructure.amazon.inbound_plan_creator.httpx.get",
+        return_value=_mock_json_response(
+            mocker, {"packingOptions": [{"packingGroups": ["pg-aaa", "pg-bbb"]}]}
+        ),
+    )
+
+    assert creator.get_packing_group_id("wf123") == "pg-aaa"

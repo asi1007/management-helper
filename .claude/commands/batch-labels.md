@@ -29,11 +29,35 @@ alwaysApply: true
 RuntimeError: FC分割を検知 (1グループ)。仕入管理シートの「納品分類」列をグループ別に書き換えてから再実行してください。
 ```
 
-### 分割時の対処
+### 分割時の対処 (2026-07-28 標準手順)
 
-1. 表示された SKU/行番号に従って、仕入管理シートの「納品分類」列をグループ別に書き換え (例: `ノーマル` → `ノーマル1` / `ノーマル2`)
-2. `/batch-labels --categories "ノーマル1,ノーマル2"` で再実行
-3. 古い試作プランは Seller Central で手動削除 (SP-API `cancelInboundPlan` は未実装)
+FC分割検知で停止したら、以下を **必ず** 実行する（ユーザ確認不要、機械的に対応する）:
+
+1. **各 packingGroup の SKU/行番号を確認** (エラーメッセージに表示済み)
+2. **AskUserQuestion で書き換え方針だけ確認** (例: 少数派グループを `分類2`、多数派を `分類1` にする等):
+   ```
+   グループ1 (3 SKU): 行441/447/453
+   グループ2 (1 SKU): 行436
+   → 行436をファッション2、行441/447/453をファッション1 でよいか？
+   ```
+3. **納品分類列を Python で自動書き換え**:
+   ```python
+   from src.infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
+   from src.infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
+   import os
+   from dotenv import load_dotenv; load_dotenv()
+
+   repo = BaseSheetsRepository(credentials_file=os.getenv('GOOGLE_CREDENTIALS_FILE'))
+   sheet = PurchaseSheet(repo=repo, sheet_id=os.getenv('SHEET_ID'), sheet_name=os.getenv('PURCHASE_SHEET_NAME'))
+   category_col = sheet._headers.index('納品分類') + 1
+
+   # ユーザ承認の割り振りで書き換え
+   sheet.write_cell(436, category_col, 'ファッション2')
+   for r in [441, 447, 453]:
+       sheet.write_cell(r, category_col, 'ファッション1')
+   ```
+4. **`/batch-labels --categories "元分類1,元分類2,..."` で全グループ再実行** (分割前グループを新分類名で置き換え、他グループは重複記載しても問題なし)
+5. 古い試作プランは Seller Central で手動削除 (SP-API `cancelInboundPlan` は未実装)。次回 `/update-fulfillment` で新試作プランが自動再利用される
 
 ## 実行手順
 
@@ -60,18 +84,19 @@ for cat, rows in groups.items():
     total_qty = sum(int(str(r.get('購入数') or '0').strip() or '0') for r in rows)
     print(f'\n=== {cat} ({len(rows)}行, 合計{total_qty}個) ===')
     for r in rows:
-        title = str(r.get('商品名') or '').strip()[:50]
+        title = str(r.get('商品名') or '').strip()[:45]
         qty = str(r.get('購入数') or '').strip()
-        print(f'  行{r.row_number}: {title} | 数量:{qty}')
+        purchase_date = str(r.get('購入日') or '').strip()[:10]  # YYYY-MM-DD or MM-DD
+        print(f'  行{r.row_number}: {purchase_date} | {title} | 数量:{qty}')
 "
 ```
 
-結果は以下の表形式で表示すること:
+結果は以下の表形式で表示すること（**購入日を必ず含める**、購入日の古い順に依頼可否を判断する材料になる）:
 
-| グループ | 行 | 商品名 | 数量 |
-|---------|-----|-------|------|
-| **グループ名** (N行, 合計X個) | | | |
-| | 行番号 | 商品名（短縮） | 数量 |
+| グループ | 行 | 購入日 | 商品名 | 数量 |
+|---------|-----|-------|-------|------|
+| **グループ名** (N行, 合計X個) | | | | |
+| | 行番号 | YYYY-MM-DD | 商品名（短縮） | 数量 |
 
 2. ユーザが処理するグループを選択したら、`--categories` オプションで指定して実行する:
 

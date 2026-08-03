@@ -198,21 +198,27 @@ class InboundPlanCreator:
         return {"quantityShipped": total_shipped, "quantityReceived": total_received, "shipmentIds": shipment_ids}
 
     def get_packing_group_id(self, inbound_plan_id: str) -> str:
-        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingGroups"
-        response = httpx.get(url, headers=self._headers, timeout=30.0)
-        response.raise_for_status()
-        data = response.json()
-        groups = data.get("packingGroups", [])
-        if not groups:
+        ids = self._list_packing_group_ids(inbound_plan_id)
+        if not ids:
             raise RuntimeError("packingGroupが見つかりません")
-        return groups[0].get("packingGroupId", groups[0]) if isinstance(groups[0], dict) else groups[0]
+        return ids[0]
 
     def get_packing_groups(self, inbound_plan_id: str) -> list[dict[str, Any]]:
-        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingGroups"
+        ids = self._list_packing_group_ids(inbound_plan_id)
+        groups: list[dict[str, Any]] = []
+        for pg_id in ids:
+            items = self.get_packing_group_items(inbound_plan_id, pg_id)
+            groups.append({"packingGroupId": pg_id, "items": items})
+        return groups
+
+    def _list_packing_group_ids(self, inbound_plan_id: str) -> list[str]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingOptions"
         response = httpx.get(url, headers=self._headers, timeout=30.0)
         response.raise_for_status()
-        data = response.json()
-        return data.get("packingGroups", [])
+        options = response.json().get("packingOptions", [])
+        if not options:
+            return []
+        return list(options[0].get("packingGroups", []))
 
     def get_packing_group_items(self, inbound_plan_id: str, packing_group_id: str) -> list[dict[str, Any]]:
         url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingGroups/{packing_group_id}/items"
