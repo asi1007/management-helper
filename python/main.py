@@ -125,6 +125,17 @@ def update_inventory() -> None:
 
 
 @cli.command()
+@click.option("--execute", is_flag=True, help="指定しない場合は検出のみで削除しない")
+def delete_blank_rows(execute: bool) -> None:
+    from usecases.delete_blank_rows import delete_blank_rows as run
+    config, repo = _get_config_and_repo()
+    rows = run(config, repo, dry_run=not execute)
+    click.echo(f"空白行: {rows}")
+    if not execute and rows:
+        click.echo("削除するには --execute を付けて再実行してください")
+
+
+@cli.command()
 def archive_out_of_stock() -> None:
     from usecases.archive_out_of_stock import archive_out_of_stock as _archive
     config, repo = _get_config_and_repo()

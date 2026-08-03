@@ -154,8 +154,24 @@ const value = rows[0][5];              // 配列互換アクセスも可能
 | `fill_sku_fnsku_from_shipment` | **状態非依存**。`納品プラン` にshipment IDがあり `SKU`/`FNSKU` が欠けている行（v0.10.0で状態ゲートを撤去） | SKU, FNSKU |
 | `update_status_estimate` | **状態非依存**（v0.11.0で状態ゲートを撤去）。`納品プラン` にshipment ID / inboundPlanID があり、状態が `在庫あり` / `在庫なし` **以外**の行。shipmentが `CLOSED` または受領率90%以上で受領とみなす | 在庫数, 受領日 |
 | `update_inventory_estimate_from_stock` | 状態 ∈ `在庫あり` / `在庫なし`。stockシートのASIN別販売可能在庫を新しい行から順に min 配分 | 在庫数 |
+| `delete_blank_rows` | 「状態」列**以外**の全列が空の行 | （行削除） |
 
 `update_status_estimate` は先頭で `fill_sku_fnsku_from_shipment` を自動実行する。
+
+### 空白行の判定と削除（`delete-blank-rows`）
+
+```bash
+python3 main.py delete-blank-rows            # 検出のみ（dry-run）
+python3 main.py delete-blank-rows --execute  # 実削除
+```
+
+**判定ロジック: 「状態」列を除く全列が空なら空白行。**
+
+状態列を判定から外すのが要点。状態は数式で、中身が空の行でも `isblank(到着日)` により必ず `未発送` を返すため、**状態を条件に含めると空白行は永久に検出できない**（`TARGET_STATUSES` のデッドロックと同じ罠）。除外対象は `FORMULA_COLUMNS` 定数で管理し、他に数式列を追加したらここにも足すこと。
+
+削除は **行番号の降順** で `deleteDimension`。昇順で消すと後続のインデックスがずれる。状態列の数式は相対参照なので、行削除後も各行が自分の行を参照した状態が保たれる（削除後に検証済み）。
+
+launchd には登録していない（不可逆操作のため手動実行）。
 
 ### 既知の落とし穴
 
