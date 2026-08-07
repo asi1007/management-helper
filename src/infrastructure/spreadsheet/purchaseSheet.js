@@ -135,6 +135,30 @@ class PurchaseSheet extends BaseSheet {
       d.setValue(dateOnly);
       console.log(`[発送日] wrote ${d.getA1Notation()} value=${dateStr}`);
     }
+
+    SpreadsheetApp.flush();
+    this._verifyPlanResultWritten(planCol, inboundPlanId);
+  }
+
+  _verifyPlanResultWritten(planCol, inboundPlanId) {
+    if (!inboundPlanId) return;
+
+    const unwrittenRows = [];
+    for (const rowNum of this.rowNumbers) {
+      const cell = this.sheet.getRange(rowNum, planCol);
+      const written = cell.getFormula() || String(cell.getValue() ?? '');
+      if (!written.includes(inboundPlanId)) {
+        unwrittenRows.push(`${cell.getA1Notation()}(実際="${written}")`);
+      }
+    }
+
+    if (unwrittenRows.length > 0) {
+      throw new Error(
+        `納品プラン ${inboundPlanId} をシートに書き込めませんでした: ${unwrittenRows.join(', ')}。` +
+        `Amazon側にはプランが作成済みのため、手動で記録するか重複プランを削除してください`
+      );
+    }
+    console.log(`[納品プラン] 書き込み検証OK: ${this.rowNumbers.length}行`);
   }
 
   decreasePurchaseQuantity(quantity) {

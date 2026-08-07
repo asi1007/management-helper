@@ -182,6 +182,29 @@ def set_filter() -> None:
 
 
 @cli.command()
+@click.option("--cartons", required=True, help="箱情報（例: '1：50*40*23 18KG'、複数行は改行区切り）")
+@click.option("--ship-date", default=None, help="出荷日 YYYY-MM-DD（省略時は翌日）")
+@click.option("--lead-days", type=int, default=None, help="到着予定までの日数（省略時は出荷日の1ヶ月後）")
+@click.argument("row_numbers", nargs=-1, type=int, required=True)
+def confirm_shipment(
+    cartons: str, ship_date: str | None, lead_days: int | None, row_numbers: tuple[int, ...],
+) -> None:
+    from datetime import date, timedelta
+    from usecases.confirm_inbound_shipment import confirm_inbound_shipment
+    config, repo = _get_config_and_repo()
+    parsed_ship_date = date.fromisoformat(ship_date) if ship_date else date.today() + timedelta(days=1)
+    result = confirm_inbound_shipment(
+        config, repo, list(row_numbers),
+        carton_text=cartons.replace("\\n", "\n"),
+        ship_date=parsed_ship_date,
+        lead_days=lead_days,
+    )
+    click.echo(f"納品番号: {result['shipmentConfirmationId']} / 納品先: {result['destination']}")
+    window = result["deliveryWindow"]
+    click.echo(f"配送ウィンドウ: {str(window.get('startDate'))[:10]} 〜 {str(window.get('endDate'))[:10]}")
+
+
+@cli.command()
 @click.argument("row_numbers", nargs=-1, type=int, required=True)
 def packing_info(row_numbers: tuple[int, ...]) -> None:
     from usecases.set_packing_info import set_packing_info

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 API_BASE_2024 = "https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20"
 API_BASE_V0 = "https://sellingpartnerapi-fe.amazon.com/fba/inbound/v0"
 MAX_ITEM_PAGES = 50
+LIST_PAGE_SIZE = 20
 POLL_INTERVAL_SEC = 5
 POLL_TIMEOUT_SEC = 300
 MAX_RETRIES = 3
@@ -202,6 +203,96 @@ class InboundPlanCreator:
         if not ids:
             raise RuntimeError("packingGroupが見つかりません")
         return ids[0]
+
+    def list_packing_options(self, inbound_plan_id: str) -> list[dict[str, Any]]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingOptions"
+        response = httpx.get(url, headers=self._headers, timeout=30.0)
+        response.raise_for_status()
+        return list(response.json().get("packingOptions", []))
+
+    def confirm_packing_option(self, inbound_plan_id: str, packing_option_id: str) -> dict[str, Any]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/packingOptions/{packing_option_id}/confirmation"
+        return self._post_and_wait(url, {})
+
+    def list_placement_options(self, inbound_plan_id: str) -> list[dict[str, Any]]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/placementOptions"
+        response = httpx.get(url, headers=self._headers, timeout=30.0)
+        response.raise_for_status()
+        return list(response.json().get("placementOptions", []))
+
+    def generate_delivery_window_options(self, inbound_plan_id: str, shipment_id: str) -> dict[str, Any]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/shipments/{shipment_id}/deliveryWindowOptions"
+        return self._post_and_wait(url, {})
+
+    def list_delivery_window_options(self, inbound_plan_id: str, shipment_id: str) -> list[dict[str, Any]]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/shipments/{shipment_id}/deliveryWindowOptions"
+        return self._list_paginated(url, "deliveryWindowOptions")
+
+    def confirm_delivery_window_option(
+        self, inbound_plan_id: str, shipment_id: str, delivery_window_option_id: str,
+    ) -> dict[str, Any]:
+        url = (
+            f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/shipments/{shipment_id}"
+            f"/deliveryWindowOptions/{delivery_window_option_id}/confirmation"
+        )
+        return self._post_and_wait(url, {})
+
+    def generate_transportation_options(
+        self, inbound_plan_id: str, placement_option_id: str, shipment_id: str, ready_to_ship_date: str,
+    ) -> dict[str, Any]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/transportationOptions"
+        body = {
+            "placementOptionId": placement_option_id,
+            "shipmentTransportationConfigurations": [
+                {"shipmentId": shipment_id, "readyToShipWindow": {"start": f"{ready_to_ship_date}T00:00Z"}},
+            ],
+        }
+        return self._post_and_wait(url, body)
+
+    def list_transportation_options(self, inbound_plan_id: str, shipment_id: str) -> list[dict[str, Any]]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/transportationOptions?shipmentId={shipment_id}"
+        return self._list_paginated(url, "transportationOptions")
+
+    def confirm_transportation_option(
+        self, inbound_plan_id: str, shipment_id: str, transportation_option_id: str,
+    ) -> dict[str, Any]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/transportationOptions/confirmation"
+        body = {"transportationSelections": [
+            {"shipmentId": shipment_id, "transportationOptionId": transportation_option_id},
+        ]}
+        return self._post_and_wait(url, body)
+
+    def get_shipment(self, inbound_plan_id: str, shipment_id: str) -> dict[str, Any]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/shipments/{shipment_id}"
+        response = httpx.get(url, headers=self._headers, timeout=30.0)
+        response.raise_for_status()
+        return dict(response.json())
+
+    def _post_and_wait(self, url: str, body: dict[str, Any]) -> dict[str, Any]:
+        response = httpx.post(url, json=body, headers=self._headers, timeout=30.0)
+        response.raise_for_status()
+        data = response.json()
+        operation_id = data.get("operationId", "")
+        if operation_id:
+            return self._wait_operation(operation_id)
+        return data
+
+    def _list_paginated(self, url: str, key: str) -> list[dict[str, Any]]:
+        separator = "&" if "?" in url else "?"
+        collected: list[dict[str, Any]] = []
+        token: str | None = None
+        for _ in range(MAX_ITEM_PAGES):
+            page_url = f"{url}{separator}pageSize={LIST_PAGE_SIZE}"
+            if token:
+                page_url += f"&paginationToken={token}"
+            response = httpx.get(page_url, headers=self._headers, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+            collected.extend(data.get(key, []))
+            token = (data.get("pagination") or {}).get("nextToken")
+            if not token:
+                break
+        return collected
 
     def get_packing_groups(self, inbound_plan_id: str) -> list[dict[str, Any]]:
         ids = self._list_packing_group_ids(inbound_plan_id)

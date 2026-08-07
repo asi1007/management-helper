@@ -10,6 +10,7 @@ from infrastructure.amazon.auth import get_auth_token
 from infrastructure.amazon.inbound_plan_creator import InboundPlanCreator
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
+from usecases.sku_completion import fill_missing_sku_fnsku
 from infrastructure.spreadsheet.work_record_sheet import WorkRecordSheet
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ def create_inbound_plan(config: AppConfig, repo: BaseSheetsRepository, row_numbe
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.get_rows_by_numbers(row_numbers)
-    sheet.fill_missing_skus_from_asins(access_token)
+    fill_missing_sku_fnsku(repo, sheet)
     items = sheet.aggregate_items()
     if not items:
         raise RuntimeError("納品対象のアイテムがありません")
@@ -35,7 +36,7 @@ def create_inbound_plan_with_placement(config: AppConfig, repo: BaseSheetsReposi
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.get_rows_by_numbers(row_numbers)
-    sheet.fill_missing_skus_from_asins(access_token)
+    fill_missing_sku_fnsku(repo, sheet)
     items = sheet.aggregate_items()
     if not items:
         raise RuntimeError("納品対象のアイテムがありません")

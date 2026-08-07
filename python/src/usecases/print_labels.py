@@ -13,6 +13,7 @@ from infrastructure.amazon.downloader import Downloader
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.instruction_sheet import InstructionSheet
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
+from usecases.sku_completion import fill_missing_sku_fnsku
 from usecases.create_inspection_sheet import create_inspection_sheet_if_needed
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ def generate_labels_and_instructions(
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.get_rows_by_numbers(row_numbers)
-    sheet.fill_missing_skus_from_asins(access_token)
+    fill_missing_sku_fnsku(repo, sheet)
     sheet.fetch_missing_fnskus(access_token)
     inspection_url = create_inspection_sheet_if_needed(config, repo, drive_service, sheet.data)
     if inspection_url:

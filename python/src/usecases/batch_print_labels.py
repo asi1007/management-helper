@@ -18,6 +18,7 @@ from infrastructure.spreadsheet.base_row import BaseRow
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.instruction_sheet import InstructionSheet
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
+from usecases.sku_completion import fill_missing_sku_fnsku
 from usecases.create_inspection_sheet import create_inspection_sheet_if_needed
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,7 @@ def batch_print_labels(
     non_home_rows = [r for rows in non_home_groups.values() for r in rows]
     sheet.data = non_home_rows
 
-    from infrastructure.spreadsheet.sales_sheet import SalesSheet
-    sales = SalesSheet(repo)
-    asin_map = sales.load_asin_to_sku_fnsku()
-    sheet.fill_missing_sku_fnsku_from_sales(asin_map)
+    fill_missing_sku_fnsku(repo, sheet)
     _validate_no_blank_sku(sheet.data)
 
     click.echo("\n[FC分割pre-check] 試作プランを作成して packingGroups を確認...")

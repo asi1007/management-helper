@@ -165,9 +165,8 @@ def test_batch_print_labels_invokes_fc_split_check(mocker):
     mock_sheet = mock_sheet_cls.return_value
     mock_sheet.data = rows
 
-    # SalesSheet も mock (batch_print_labels 内で local import されるため実モジュールパスでパッチ)
-    mock_sales_cls = mocker.patch("infrastructure.spreadsheet.sales_sheet.SalesSheet")
-    mock_sales_cls.return_value.load_asin_to_sku_fnsku.return_value = {}
+    # SKU/FNSKU 補完は usecases.sku_completion に集約されているのでそこをパッチ
+    mocker.patch.object(mod, "fill_missing_sku_fnsku")
 
     # InboundPlanCreator を mock (FC分割なし)
     mock_creator_cls = mocker.patch.object(mod, "InboundPlanCreator")
