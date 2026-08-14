@@ -182,6 +182,15 @@ def set_filter() -> None:
 
 
 @cli.command()
+@click.option("--threshold-days", type=int, default=21, help="この日数を超えて未受領なら問い合わせ対象（既定21日）")
+@click.option("--send", is_flag=True, help="指定するとChatworkへ問い合わせ文を送信する")
+def inquire_undelivered(threshold_days: int, send: bool) -> None:
+    from usecases.inquire_undelivered import inquire_undelivered as _inquire
+    config, repo = _get_config_and_repo()
+    _inquire(config, repo, threshold_days=threshold_days, send=send)
+
+
+@cli.command()
 @click.option("--cartons", required=True, help="箱情報（例: '1：50*40*23 18KG'、複数行は改行区切り）")
 @click.option("--ship-date", default=None, help="出荷日 YYYY-MM-DD（省略時は翌日）")
 @click.option("--lead-days", type=int, default=None, help="到着予定までの日数（省略時は出荷日の1ヶ月後）")
