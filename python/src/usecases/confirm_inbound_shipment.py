@@ -76,8 +76,9 @@ def _apply_packing(creator: InboundPlanCreator, inbound_plan_id: str, cartons: l
 
     packing_group_id = creator.get_packing_group_id(inbound_plan_id)
     items = creator.get_packing_group_items(inbound_plan_id, packing_group_id)
-    creator.set_packing_information(inbound_plan_id, build_packing_body(packing_group_id, cartons, items))
-    click.echo(f"梱包情報を登録: {len(cartons)}種類の輸送箱")
+    box_count = sum(int(carton["count"]) for carton in cartons)
+    creator.set_packing_information(inbound_plan_id, build_packing_body(packing_group_id, cartons))
+    click.echo(f"梱包情報を登録: {box_count}箱 / {len(items)}SKU（Amazonが手動で輸送箱の中身を処理する）")
 
 
 def _apply_placement(creator: InboundPlanCreator, inbound_plan_id: str) -> tuple[str, str]:

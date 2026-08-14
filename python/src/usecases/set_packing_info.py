@@ -38,14 +38,12 @@ def set_packing_info(config: AppConfig, repo: BaseSheetsRepository, row_numbers:
         raise RuntimeError("箱情報がパースできません")
     creator = InboundPlanCreator(access_token)
     packing_group_id = creator.get_packing_group_id(inbound_plan_id)
-    items = creator.get_packing_group_items(inbound_plan_id, packing_group_id)
-    body = build_packing_body(packing_group_id, cartons, items)
-    creator.set_packing_information(inbound_plan_id, body)
+    creator.set_packing_information(inbound_plan_id, build_packing_body(packing_group_id, cartons))
     click.echo("梱包情報の送信が完了しました")
 
 
 PLAN_ID_PATTERN = r"wf[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|wf[a-zA-Z0-9]+"
-LABELING_PREP_TYPE = "ITEM_LABELING"
+MANUAL_PROCESS = "MANUAL_PROCESS"
 
 
 def extract_inbound_plan_id(cell_value: str) -> str:
@@ -89,43 +87,20 @@ def parse_carton_input(text: str) -> list[dict[str, Any]]:
     return cartons
 
 
-def build_packing_body(
-    packing_group_id: str, cartons: list[dict[str, Any]], items: list[dict[str, Any]],
-) -> dict[str, Any]:
-    box_items = [
-        {
-            "msku": item.get("msku", ""),
-            "quantity": item.get("quantity", 0),
-            "labelOwner": item.get("labelOwner", "SELLER"),
-            "prepOwner": _prep_owner_of(item),
-        }
-        for item in items
-    ]
-    package_groups = [
-        {
-            "packingGroupId": packing_group_id,
-            "boxes": [{
-                "contentInformationSource": "BOX_CONTENT_PROVIDED",
-                "weight": {"unit": "KG", "value": carton["weight"]},
-                "dimensions": {
-                    "unitOfMeasurement": "CM",
-                    "length": carton["length"],
-                    "width": carton["width"],
-                    "height": carton["height"],
-                },
-                "quantity": carton["count"],
-                "items": box_items,
-            }],
-        }
-        for carton in cartons
-    ]
-    return {"packageGroupings": package_groups}
+def build_packing_body(packing_group_id: str, cartons: list[dict[str, Any]]) -> dict[str, Any]:
+    boxes = [_build_box(carton) for carton in cartons]
+    return {"packageGroupings": [{"packingGroupId": packing_group_id, "boxes": boxes}]}
 
 
-def _prep_owner_of(item: dict[str, Any]) -> str:
-    for instruction in item.get("prepInstructions") or []:
-        if instruction.get("prepType") == LABELING_PREP_TYPE:
-            continue
-        if instruction.get("prepOwner"):
-            return str(instruction["prepOwner"])
-    return "NONE"
+def _build_box(carton: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "contentInformationSource": MANUAL_PROCESS,
+        "weight": {"unit": "KG", "value": carton["weight"]},
+        "dimensions": {
+            "unitOfMeasurement": "CM",
+            "length": carton["length"],
+            "width": carton["width"],
+            "height": carton["height"],
+        },
+        "quantity": carton["count"],
+    }

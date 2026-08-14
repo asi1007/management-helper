@@ -25,20 +25,23 @@ class TestExtractInboundPlanId:
 
 
 class TestBuildPackingBody:
-    def test_箱ごとにlabelOwnerとprepOwnerとcontentInformationSourceを含める(self) -> None:
+    def test_常にAmazon手動処理で内容物は申告しない(self) -> None:
         cartons = parse_carton_input("1：50*40*23 18KG")
-        items = [{"msku": "2K-480G-SL04", "quantity": 503, "labelOwner": "SELLER"}]
-        body = build_packing_body("pg-1", cartons, items)
+        body = build_packing_body("pg-1", cartons)
 
         box = body["packageGroupings"][0]["boxes"][0]
-        assert box["contentInformationSource"] == "BOX_CONTENT_PROVIDED"
-        assert box["items"] == [
-            {"msku": "2K-480G-SL04", "quantity": 503, "labelOwner": "SELLER", "prepOwner": "NONE"},
-        ]
+        assert box["contentInformationSource"] == "MANUAL_PROCESS"
+        assert "items" not in box
+
+    def test_単一SKU単一箱でもAmazon手動処理(self) -> None:
+        cartons = parse_carton_input("1：50*40*23 18KG")
+        body = build_packing_body("pg-1", cartons)
+
+        assert body["packageGroupings"][0]["boxes"][0]["contentInformationSource"] == "MANUAL_PROCESS"
 
     def test_センチとキロのままAPIへ送る(self) -> None:
         cartons = parse_carton_input("1：50*40*23 18KG")
-        body = build_packing_body("pg-1", cartons, [{"msku": "SKU-1", "quantity": 1}])
+        body = build_packing_body("pg-1", cartons)
 
         box = body["packageGroupings"][0]["boxes"][0]
         assert box["dimensions"] == {
@@ -46,31 +49,15 @@ class TestBuildPackingBody:
         }
         assert box["weight"] == {"unit": "KG", "value": 18.0}
 
-    def test_ラベル貼付のprepはprepOwnerに含めない(self) -> None:
-        cartons = parse_carton_input("1：50*40*23 18KG")
-        items = [{
-            "msku": "SKU-1", "quantity": 1, "labelOwner": "SELLER",
-            "prepInstructions": [{"prepType": "ITEM_LABELING", "prepOwner": "SELLER"}],
-        }]
-        body = build_packing_body("pg-1", cartons, items)
-
-        assert body["packageGroupings"][0]["boxes"][0]["items"][0]["prepOwner"] == "NONE"
-
-    def test_ラベル貼付以外のprepはprepOwnerに反映する(self) -> None:
-        cartons = parse_carton_input("1：50*40*23 18KG")
-        items = [{
-            "msku": "SKU-1", "quantity": 1, "labelOwner": "SELLER",
-            "prepInstructions": [
-                {"prepType": "ITEM_LABELING", "prepOwner": "SELLER"},
-                {"prepType": "ITEM_POLYBAGGING", "prepOwner": "AMAZON"},
-            ],
-        }]
-        body = build_packing_body("pg-1", cartons, items)
-
-        assert body["packageGroupings"][0]["boxes"][0]["items"][0]["prepOwner"] == "AMAZON"
-
     def test_複数箱の範囲指定を箱数に展開する(self) -> None:
         cartons = parse_carton_input("1-3：60*40*32 29.1KG")
-        body = build_packing_body("pg-1", cartons, [{"msku": "SKU-1", "quantity": 30}])
+        body = build_packing_body("pg-1", cartons)
 
         assert body["packageGroupings"][0]["boxes"][0]["quantity"] == 3
+
+    def test_箱の種類ごとにboxesを並べる(self) -> None:
+        cartons = parse_carton_input("1-23：40*50*60 29.1KG\n24-38：40*50*60 28.9KG")
+        body = build_packing_body("pg-1", cartons)
+
+        boxes = body["packageGroupings"][0]["boxes"]
+        assert [b["quantity"] for b in boxes] == [23, 15]
