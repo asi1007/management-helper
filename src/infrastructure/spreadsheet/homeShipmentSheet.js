@@ -1,10 +1,30 @@
 /* exported HomeShipmentSheet */
 
+// 自宅発送シートのヘッダーは仕入管理シート1行目の内部名を使うため、
+// 業務上の列名（仕入管理シート4行目）から読み替える
+const HOME_SHIPMENT_COLUMN_ALIASES = {
+  "ASIN": "ASIN_SELL",
+  "購入日": "DATE_ORDER",
+  "注文番号": "MyUS",
+  "商品名": "TITLE_SELL",
+  "購入数": "QTY",
+  "納品プラン": "INBOUND_PLAN",
+};
+
 class HomeShipmentSheet extends BaseSheet {
   constructor(sheetName){
     super(sheetName, 3, 1);
     // BaseSheetのヘッダー行（row3）を列解決に使う
     this.headers = this._headersPrimary;
+  }
+
+  _getColumnIndexByName(columnName) {
+    const key = String(columnName ?? '').trim();
+    const alias = HOME_SHIPMENT_COLUMN_ALIASES[key];
+    if (!this._headerIndexMap.has(key) && alias && this._headerIndexMap.has(alias)) {
+      return super._getColumnIndexByName(alias);
+    }
+    return super._getColumnIndexByName(key);
   }
 
   _getColumnIndex(columnName) {
