@@ -1,48 +1,61 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
+
+if TYPE_CHECKING:
+    from gspread import Worksheet
 
 logger = logging.getLogger(__name__)
 
 SALES_SHEET_ID = "1Z3P0iL19r3gA9-NG8x2e_42pGhrEs_wFMLWLbFvReAw"
 SALES_SHEET_NAME = "売上/日"
 HEADER_ROW_INDEX = 3
-REQUIRED_HEADERS = {"ASIN": "", "SKU": "", "fnsku": ""}
+REQUIRED_HEADERS = ["ASIN", "SKU", "fnsku"]
+DELIVERY_CATEGORY_HEADER = "納品分類"
 
 
 class SalesSheet:
     def __init__(self, repo: BaseSheetsRepository) -> None:
         self._repo = repo
+        self._worksheet: Worksheet | None = None
+
+    def _open(self) -> Worksheet:
+        if self._worksheet is None:
+            self._worksheet = self._repo.open_worksheet(SALES_SHEET_ID, SALES_SHEET_NAME)
+        return self._worksheet
+
+    def _load_table(self, required: list[str]) -> tuple[dict[str, int], list[list[str]]]:
+        all_values = self._open().get_all_values()
+        col_map = self._find_columns(all_values[HEADER_ROW_INDEX], required)
+        return col_map, all_values[HEADER_ROW_INDEX + 1:]
 
     @staticmethod
-    def _find_columns(header: list[str]) -> dict[str, int]:
+    def _find_columns(header: list[str], required: list[str]) -> dict[str, int]:
         col_map: dict[str, int] = {}
         for idx, cell in enumerate(header):
             stripped = cell.strip()
-            if stripped in REQUIRED_HEADERS and stripped not in col_map:
+            if stripped in required and stripped not in col_map:
                 col_map[stripped] = idx
-        missing = [name for name in REQUIRED_HEADERS if name not in col_map]
+        missing = [name for name in required if name not in col_map]
         if missing:
             raise ValueError(f"売上/日シートのヘッダーに必要な列が見つかりません: {missing}")
         return col_map
 
-    def load_asin_to_sku_fnsku(self) -> dict[str, dict[str, str]]:
-        worksheet = self._repo.open_worksheet(SALES_SHEET_ID, SALES_SHEET_NAME)
-        all_values = worksheet.get_all_values()
-        header = all_values[HEADER_ROW_INDEX]
-        col_map = self._find_columns(header)
+    @staticmethod
+    def _cell(row_values: list[str], index: int) -> str:
+        return str(row_values[index]).strip() if len(row_values) > index else ""
 
-        asin_col = col_map["ASIN"]
-        sku_col = col_map["SKU"]
-        fnsku_col = col_map["fnsku"]
+    def load_asin_to_sku_fnsku(self) -> dict[str, dict[str, str]]:
+        col_map, rows = self._load_table(REQUIRED_HEADERS)
 
         result: dict[str, dict[str, str]] = {}
-        for row_values in all_values[HEADER_ROW_INDEX + 1:]:
-            asin = str(row_values[asin_col]).strip() if len(row_values) > asin_col else ""
-            sku = str(row_values[sku_col]).strip() if len(row_values) > sku_col else ""
-            fnsku = str(row_values[fnsku_col]).strip() if len(row_values) > fnsku_col else ""
+        for row_values in rows:
+            asin = self._cell(row_values, col_map["ASIN"])
+            sku = self._cell(row_values, col_map["SKU"])
+            fnsku = self._cell(row_values, col_map["fnsku"])
 
             if not asin or asin in result:
                 continue
@@ -51,3 +64,33 @@ class SalesSheet:
 
         logger.info("売上/日シートからASIN→SKU/fnsku取得: %d件", len(result))
         return result
+
+    def load_delivery_category_by_asin(self) -> dict[str, str]:
+        col_map, rows = self._load_table([*REQUIRED_HEADERS, DELIVERY_CATEGORY_HEADER])
+
+        result: dict[str, str] = {}
+        for row_values in rows:
+            asin = self._cell(row_values, col_map["ASIN"])
+            category = self._cell(row_values, col_map[DELIVERY_CATEGORY_HEADER])
+            if not asin or asin in result or not category:
+                continue
+            result[asin] = category
+        return result
+
+    def write_delivery_category(self, asin: str, category: str) -> list[int]:
+        col_map, rows = self._load_table([*REQUIRED_HEADERS, DELIVERY_CATEGORY_HEADER])
+        target = str(asin).strip()
+        column_number = col_map[DELIVERY_CATEGORY_HEADER] + 1
+
+        written: list[int] = []
+        for offset, row_values in enumerate(rows):
+            if self._cell(row_values, col_map["ASIN"]) != target:
+                continue
+            row_number = HEADER_ROW_INDEX + 2 + offset
+            self._open().update_cell(row_number, column_number, category)
+            written.append(row_number)
+
+        if not written:
+            raise ValueError(f"売上/日シートに ASIN {target} の行がありません")
+        logger.info("納品分類「%s」を書き込み: ASIN=%s, 行=%s", category, target, written)
+        return written

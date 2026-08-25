@@ -18,6 +18,18 @@ SHIP_FROM_ADDRESS = {
     "email": "",
 }
 
+# 納品分類の判定に使う代表SKU。
+# 「売上/日」の納品分類ラベルには実績のない予想値が混ざるため、そこからは選ばない。
+# ここに載せるのは専用FCへの納品実績があるSKUだけ:
+#   ノーマル専用FC = XJE1 / XKX4、ファッション専用FC = TYO2 / NRT5 / QCB3
+#   （QCB5・XJE2・XJW1 は両分類を受け入れるので判定の根拠にならない）
+# 廃番などで使えなくなったら次の候補へ自動でフォールバックする。
+# 候補の洗い直しは docs の「納品分類の判定」を参照。
+DELIVERY_CATEGORY_REFERENCE_SKUS = {
+    "ノーマル": ["22-885D-4NIK", "3B-HK6Q-DN3X", "2Z-831G-H2V0", "3Q-FTBT-Q3HG"],
+    "ファッション": ["CT-P7KS-ZB0P", "JG-THN3-HCFH", "NH-VABG-H0FL", "8E-3VEB-P3I9"],
+}
+
 GDRIVE_BASE = "/Users/wadaatsushi/Library/CloudStorage/GoogleDrive-zyanzyakazyan@gmail.com/マイドライブ/work/shop/invoices/0828 ■共有 新白岡輸入販売×TAXLAB/業務用書類/8.指示書"
 DEFAULT_LABEL_DIR = f"{GDRIVE_BASE}/ラベル"
 DEFAULT_INSTRUCTION_DIR = f"{GDRIVE_BASE}/検品指示書"

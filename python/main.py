@@ -221,5 +221,34 @@ def packing_info(row_numbers: tuple[int, ...]) -> None:
     set_packing_info(config, repo, list(row_numbers))
 
 
+@cli.command()
+@click.option("--overwrite", is_flag=True, help="納品分類が既に入っていても再判定して上書きする")
+@click.option("--dry-run", is_flag=True, help="判定するが売上/日シートには書き込まない")
+@click.argument("asins", nargs=-1, required=True)
+def classify_delivery(asins: tuple[str, ...], overwrite: bool, dry_run: bool) -> None:
+    from usecases.classify_delivery_category import run_classification
+    config, repo = _get_config_and_repo()
+    outcomes = run_classification(
+        config, repo, list(asins), overwrite=overwrite, dry_run=dry_run
+    )
+    _echo_classification_outcomes(outcomes)
+
+
+def _echo_classification_outcomes(outcomes: list) -> None:
+    failed = 0
+    for outcome in outcomes:
+        if outcome.error:
+            failed += 1
+            click.echo(f"✗ {outcome.asin}: {outcome.error}", err=True)
+            continue
+        result = outcome.result
+        suffix = "（設定済みのためスキップ）" if result.skipped else ""
+        if result.cancel_failed:
+            suffix += f" ※試作プラン {result.inbound_plan_id} の削除に失敗。Seller Centralで手動削除してください"
+        click.echo(f"✓ {outcome.asin}: {result.category}{suffix}")
+    if failed:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     cli()

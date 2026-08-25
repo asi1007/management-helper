@@ -341,3 +341,13 @@ class InboundPlanCreator:
         if operation_id:
             return self._wait_operation(operation_id)
         return data
+
+    def cancel_inbound_plan(self, inbound_plan_id: str) -> dict[str, Any]:
+        url = f"{API_BASE_2024}/inboundPlans/{inbound_plan_id}/cancellation"
+        response = httpx.put(url, json={}, headers=self._headers, timeout=30.0)
+        response.raise_for_status()
+        data = response.json()
+        operation_id = data.get("operationId", "")
+        if operation_id:
+            return self._wait_operation(operation_id)
+        return data
