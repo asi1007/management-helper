@@ -17,6 +17,7 @@ EN_SKU_HEADER = "seller-sku"
 EN_ASIN_HEADER = "asin1"
 JA_SKU_HEADER = "出品者SKU"
 JA_ASIN_HEADER = "ASIN1"
+JA_PRODUCT_ID_HEADER = "商品ID"
 
 
 class MerchantListingsSkuResolver:
@@ -86,7 +87,9 @@ class MerchantListingsSkuResolver:
         headers = [h.lstrip("\ufeff") for h in lines[0].split("\t")]
         headers_lower = [h.strip().lower() for h in headers]
         sku_col = self._find_column(headers, headers_lower, [EN_SKU_HEADER, JA_SKU_HEADER])
-        asin_col = self._find_column(headers, headers_lower, [EN_ASIN_HEADER, JA_ASIN_HEADER])
+        asin_col = self._find_column(
+            headers, headers_lower, [EN_ASIN_HEADER, JA_ASIN_HEADER, JA_PRODUCT_ID_HEADER]
+        )
         if sku_col is None or asin_col is None:
             logger.warning("SKUまたはASIN列が見つかりません: %s", headers)
             return {}

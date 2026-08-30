@@ -24,3 +24,17 @@ class TestExtractAsinSkuMap:
         result = resolver._extract_asin_sku_map(tsv, ["B001"])
         assert result == {"B001": "SKU-1"}
         assert "B002" not in result
+
+    def test_parses_tsv_japanese_headers_without_asin1_column(self):
+        tsv = "商品名\t出品ID\t出品者SKU\t価格\t数量\t出品日\t商品IDタイプ\t商品ID\t在庫数\n"
+        tsv += "商品A\tLIST1\tSKU-JP-1\t100\t10\t2024-01-01\tASIN\tB001\t0\n"
+        resolver = MerchantListingsSkuResolver(auth_token="dummy")
+        result = resolver._extract_asin_sku_map(tsv, ["B001"])
+        assert result == {"B001": "SKU-JP-1"}
+
+    def test_prefers_asin1_over_product_id_column(self):
+        tsv = "商品名\t出品者SKU\t商品IDタイプ\t商品ID\tASIN1\n"
+        tsv += "商品A\tSKU-JP-1\tEAN\t4580806220483\tB001\n"
+        resolver = MerchantListingsSkuResolver(auth_token="dummy")
+        result = resolver._extract_asin_sku_map(tsv, ["B001"])
+        assert result == {"B001": "SKU-JP-1"}
