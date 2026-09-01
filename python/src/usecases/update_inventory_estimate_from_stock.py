@@ -11,6 +11,11 @@ from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
 logger = logging.getLogger(__name__)
 
 INVENTORY_COL = "在庫数"
+STOCK_SHEET_NAME = "stock"
+
+
+class StockUnavailableError(RuntimeError):
+    pass
 
 
 def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
@@ -47,19 +52,19 @@ def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> 
 def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> dict[str, int]:
     try:
         spreadsheet = repo.open_spreadsheet(sheet_id)
-        stock_sheet = spreadsheet.worksheet("stock")
-    except Exception:
-        logger.warning("stockシートが見つかりません")
-        return {}
+        stock_sheet = spreadsheet.worksheet(STOCK_SHEET_NAME)
+    except Exception as exc:
+        raise StockUnavailableError(f"{STOCK_SHEET_NAME}シートを開けません: {exc}") from exc
     all_values = stock_sheet.get_all_values()
     if not all_values:
-        return {}
+        raise StockUnavailableError(f"{STOCK_SHEET_NAME}シートが空です")
     headers = [str(h).strip() for h in all_values[0]]
     asin_col = next((i for i, h in enumerate(headers) if h.lower() == "asin"), None)
     available_col = next((i for i, h in enumerate(headers) if "販売可能" in h), None)
     if asin_col is None or available_col is None:
-        logger.warning("stockシートにASINまたは販売可能列がありません: headers=%s", headers)
-        return {}
+        raise StockUnavailableError(
+            f"{STOCK_SHEET_NAME}シートにASINまたは販売可能列がありません: headers={headers}"
+        )
     result: dict[str, int] = {}
     for row_values in all_values[1:]:
         if len(row_values) <= max(asin_col, available_col):
@@ -68,6 +73,8 @@ def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> 
         stock = _parse_stock_quantity(row_values[available_col])
         if asin:
             result[asin] = result.get(asin, 0) + stock
+    if not result:
+        raise StockUnavailableError(f"{STOCK_SHEET_NAME}シートからASINを1件も読み取れません")
     return result
 
 

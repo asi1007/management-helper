@@ -12,6 +12,11 @@ ARCHIVE_SHEET_NAME = "過去仕入れログ"
 STATUS_COL = "状態"
 OUT_OF_STOCK = "在庫なし"
 FIRST_DATA_ROW = 6
+MAX_ARCHIVE_ROWS = 20
+
+
+class TooManyArchiveRowsError(RuntimeError):
+    pass
 
 
 def archive_out_of_stock(config: AppConfig, repo: BaseSheetsRepository) -> None:
@@ -27,6 +32,11 @@ def archive_out_of_stock(config: AppConfig, repo: BaseSheetsRepository) -> None:
     if not rows_to_archive:
         logger.info("在庫なし行なし")
         return
+    if len(rows_to_archive) > MAX_ARCHIVE_ROWS:
+        raise TooManyArchiveRowsError(
+            f"在庫なしが{len(rows_to_archive)}行あり上限{MAX_ARCHIVE_ROWS}行を超えるため中断しました。"
+            "在庫数の一括ゼロ化が起きていないか確認してください"
+        )
 
     archive_sheet.append_rows(
         [list(row) for row in rows_to_archive],
