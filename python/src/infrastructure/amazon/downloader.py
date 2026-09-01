@@ -9,7 +9,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 SP_API_LABELS_URL = "https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20/items/labels"
-MAX_QUANTITY_PER_REQUEST = 999
+MAX_QUANTITY_PER_MSKU = 10000
+MAX_ITEMS_PER_REQUEST = 100
 
 
 class Downloader:
@@ -78,21 +79,18 @@ class Downloader:
         return file_path
 
     def _split_by_quantity_limit(self, sku_nums: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
-        SPLIT_THRESHOLD = 15000
-        CHUNK_LIMIT = 10000
-        total_quantity = sum(item["quantity"] for item in sku_nums)
-        if total_quantity <= SPLIT_THRESHOLD:
-            return [sku_nums]
-        chunks: list[list[dict[str, Any]]] = []
-        current_chunk: list[dict[str, Any]] = []
-        chunk_total = 0
+        entries = self._split_by_msku_quantity(sku_nums)
+        return [
+            entries[i : i + MAX_ITEMS_PER_REQUEST]
+            for i in range(0, len(entries), MAX_ITEMS_PER_REQUEST)
+        ]
+
+    def _split_by_msku_quantity(self, sku_nums: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
         for item in sku_nums:
-            if chunk_total + item["quantity"] > CHUNK_LIMIT and current_chunk:
-                chunks.append(current_chunk)
-                current_chunk = []
-                chunk_total = 0
-            current_chunk.append(item)
-            chunk_total += item["quantity"]
-        if current_chunk:
-            chunks.append(current_chunk)
-        return chunks
+            remaining = item["quantity"]
+            while remaining > 0:
+                quantity = min(remaining, MAX_QUANTITY_PER_MSKU)
+                entries.append({**item, "quantity": quantity})
+                remaining -= quantity
+        return entries
