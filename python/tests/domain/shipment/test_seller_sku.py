@@ -21,10 +21,8 @@ def test_数式エラー値は無効(sku):
     assert is_usable_sku(sku) is False
 
 
-@pytest.mark.parametrize("sku", ["SKU-20260508124233", "SKU-1234567890"])
-def test_仮SKUは無効(sku):
-    assert is_usable_sku(sku) is False
-
-
-def test_数字が9桁以下なら仮SKUとみなさない():
-    assert is_usable_sku("SKU-123456789") is True
+@pytest.mark.parametrize("sku", ["SKU-20260830090814", "SKU-20260508124233", "SKU-1234567890"])
+def test_create_listingが付けたSKUも有効(sku):
+    # create_listing.py は SKU-YYYYMMDDHHmmss を本番SKUとして登録する。
+    # 出品レポートで実在を確認済み（2026-09-03）。形式では仮SKUと区別できない
+    assert is_usable_sku(sku) is True

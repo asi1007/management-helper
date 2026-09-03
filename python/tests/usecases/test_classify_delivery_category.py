@@ -236,8 +236,8 @@ def test_売上日のSKUが数式エラーならresolve_skuで解決する(mocke
     resolve_sku.assert_called_once_with(TARGET_ASIN)
 
 
-def test_売上日のSKUが仮SKUならresolve_skuで解決する(mocker):
-    sales = _sales_mock(mocker, sku_by_asin={TARGET_ASIN: {"sku": "SKU-20260508124233", "fnsku": ""}})
+def test_売上日のSKUが数式エラーならresolve_skuで解決する(mocker):
+    sales = _sales_mock(mocker, sku_by_asin={TARGET_ASIN: {"sku": "#N/A", "fnsku": ""}})
     creator = _creator_mock(mocker, [[TARGET_SKU, "SKU-REF-N"], ["SKU-REF-F"]])
     resolve_sku = mocker.Mock(return_value=TARGET_SKU)
 
@@ -246,10 +246,23 @@ def test_売上日のSKUが仮SKUならresolve_skuで解決する(mocker):
     resolve_sku.assert_called_once_with(TARGET_ASIN)
 
 
-def test_resolve_skuが仮SKUを返したらエラー(mocker):
+def test_売上日のSKUがSKUハイフン数字でもそのまま使う(mocker):
+    # create_listing.py が付ける本番SKU。形式で仮SKU扱いして弾いていた
+    sales = _sales_mock(
+        mocker, sku_by_asin={TARGET_ASIN: {"sku": "SKU-20260830090814", "fnsku": ""}}
+    )
+    creator = _creator_mock(mocker, [["SKU-20260830090814", "SKU-REF-N"], ["SKU-REF-F"]])
+    resolve_sku = mocker.Mock()
+
+    classify_delivery_category(TARGET_ASIN, sales=sales, creator=creator, resolve_sku=resolve_sku)
+
+    resolve_sku.assert_not_called()
+
+
+def test_resolve_skuが空を返したらエラー(mocker):
     sales = _sales_mock(mocker, sku_by_asin={})
     creator = _creator_mock(mocker, [])
-    resolve_sku = mocker.Mock(return_value="SKU-20260508124233")
+    resolve_sku = mocker.Mock(return_value="")
 
     with pytest.raises(RuntimeError, match="SKU"):
         classify_delivery_category(
