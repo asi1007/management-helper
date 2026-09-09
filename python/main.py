@@ -176,6 +176,14 @@ def batch_labels(categories: str | None, air: bool) -> None:
 
 
 @cli.command()
+@click.option("--stale-days", type=int, default=14, help="この日数を超えたら滞留として印を付ける（既定14日）")
+def delivery_status(stale_days: int) -> None:
+    from usecases.delivery_status import show_delivery_status
+    config, repo = _get_config_and_repo()
+    show_delivery_status(config, repo, stale_days=stale_days)
+
+
+@cli.command()
 @click.option("--alias", required=True, help="巻き戻す「プラン別名」（例: 09/09ノーマル）")
 @click.option("--execute", is_flag=True, help="指定しない場合はドライラン")
 @click.option("--delete-chatwork", is_flag=True, help="Chatworkへ送った指示書の投稿も取り下げる")
