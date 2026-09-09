@@ -110,11 +110,12 @@ class PurchaseSheet(BaseSheet):
 
         logger.info("[SKU/FNSKU補完] 売上シートから補完: SKU=%d件, FNSKU=%d件", filled_sku, filled_fnsku)
 
-    def write_plan_name_to_rows(self, instruction_url: str | None) -> int:
+    def write_plan_name_to_rows(self, instruction_url: str | None, suffix: str = "") -> int:
         date_str = self._format_date_mmdd()
+        tail = str(suffix or "").strip()
         def value_func(row: Any, _index: int) -> Any:
             delivery_category = str(row.get("納品分類") or "").strip()
-            plan_name = f"{date_str}{delivery_category}"
+            plan_name = f"{date_str}{delivery_category}{tail}"
             if instruction_url:
                 return {"type": "formula", "value": f'=HYPERLINK("{instruction_url}", "{plan_name}")'}
             return plan_name
@@ -138,13 +139,13 @@ class PurchaseSheet(BaseSheet):
                 targets.append({"row": row, "row_num": row.row_number, "asin": asin})
         return targets
 
-    def _generate_plan_name_text(self) -> str:
+    def _generate_plan_name_text(self, suffix: str = "") -> str:
         date_str = self._format_date_mmdd()
         try:
             category = str(self.data[0].get("納品分類") or "").strip() if self.data else ""
         except Exception:
             category = ""
-        return f"{date_str}{category}"
+        return f"{date_str}{category}{str(suffix or '').strip()}"
 
     def _format_date_mmdd(self) -> str:
         now = datetime.now()

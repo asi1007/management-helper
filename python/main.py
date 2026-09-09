@@ -167,11 +167,28 @@ def arrival_date(row_numbers: tuple[int, ...]) -> None:
 
 @cli.command()
 @click.option("--categories", type=str, default=None, help="納品分類をカンマ区切りで指定（例: ノーマル,ファッション）")
-def batch_labels(categories: str | None) -> None:
+@click.option("--air", is_flag=True, help="空輸。プラン別名の末尾に「空輸」を付ける")
+def batch_labels(categories: str | None, air: bool) -> None:
     from usecases.batch_print_labels import batch_print_labels
     category_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
     config, repo = _get_config_and_repo()
-    batch_print_labels(config, repo, category_filter=category_list)
+    batch_print_labels(config, repo, category_filter=category_list, plan_name_suffix="空輸" if air else "")
+
+
+@cli.command()
+@click.option("--alias", required=True, help="巻き戻す「プラン別名」（例: 09/09ノーマル）")
+@click.option("--execute", is_flag=True, help="指定しない場合はドライラン")
+@click.option("--delete-chatwork", is_flag=True, help="Chatworkへ送った指示書の投稿も取り下げる")
+@click.option("--since-hours", type=int, default=24, help="Chatworkを遡る時間（既定24時間）")
+def revert_shipment(alias: str, execute: bool, delete_chatwork: bool, since_hours: int) -> None:
+    from usecases.revert_shipment_request import revert_shipment_request
+    config, repo = _get_config_and_repo()
+    revert_shipment_request(
+        config, repo, alias,
+        dry_run=not execute,
+        delete_chatwork=delete_chatwork,
+        since_hours=since_hours,
+    )
 
 
 @cli.command()

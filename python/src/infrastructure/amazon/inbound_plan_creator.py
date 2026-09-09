@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 API_BASE_2024 = "https://sellingpartnerapi-fe.amazon.com/inbound/fba/2024-03-20"
 API_BASE_V0 = "https://sellingpartnerapi-fe.amazon.com/fba/inbound/v0"
 MAX_ITEM_PAGES = 50
+CONFIRM_RETRY_ATTEMPTS = 4
+CONFIRM_RETRY_INTERVAL_SEC = 5
 LIST_PAGE_SIZE = 20
 POLL_INTERVAL_SEC = 5
 POLL_TIMEOUT_SEC = 300
@@ -269,13 +271,27 @@ class InboundPlanCreator:
         return dict(response.json())
 
     def _post_and_wait(self, url: str, body: dict[str, Any]) -> dict[str, Any]:
-        response = httpx.post(url, json=body, headers=self._headers, timeout=30.0)
-        response.raise_for_status()
+        response = self._post_with_retry(url, body)
         data = response.json()
         operation_id = data.get("operationId", "")
         if operation_id:
             return self._wait_operation(operation_id)
         return data
+
+    def _post_with_retry(self, url: str, body: dict[str, Any]) -> Any:
+        # 直前に generate した候補は反映まで数秒かかり、その間 confirm が 400 を返す。
+        # 権限や入力の誤りによる恒久的な失敗と区別できないため、400 のみ短く再試行する。
+        for attempt in range(CONFIRM_RETRY_ATTEMPTS):
+            response = httpx.post(url, json=body, headers=self._headers, timeout=30.0)
+            if response.status_code != 400 or attempt == CONFIRM_RETRY_ATTEMPTS - 1:
+                response.raise_for_status()
+                return response
+            logger.warning(
+                "400のため再試行します (%d/%d): %s %s",
+                attempt + 1, CONFIRM_RETRY_ATTEMPTS - 1, url, response.text[:200],
+            )
+            time.sleep(CONFIRM_RETRY_INTERVAL_SEC)
+        raise RuntimeError("到達しません")
 
     def _list_paginated(self, url: str, key: str) -> list[dict[str, Any]]:
         separator = "&" if "?" in url else "?"

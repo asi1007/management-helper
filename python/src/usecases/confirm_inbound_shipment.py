@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 from typing import Any
 
@@ -15,6 +16,7 @@ from shared.config import AppConfig
 from usecases.set_packing_info import (
     build_packing_body,
     extract_inbound_plan_id,
+    is_full_inbound_plan_id,
     parse_carton_input,
 )
 
@@ -23,6 +25,8 @@ logger = logging.getLogger(__name__)
 OWN_CARRIER_SOLUTION = "USE_YOUR_OWN_CARRIER"
 SMALL_PARCEL_MODE = "GROUND_SMALL_PARCEL"
 OTHER_CARRIER_NAME = "Other"
+SHIPMENT_ID_PATTERN = re.compile(r"FBA[A-Z0-9]{9}")
+SHIPMENT_SUMMARY_URL = "https://sellercentral.amazon.co.jp/fba/inbound-shipment/summary/"
 
 
 def confirm_inbound_shipment(
@@ -50,6 +54,7 @@ def confirm_inbound_shipment(
     _write_box_count(sheet, cartons)
 
     shipment = creator.get_shipment(inbound_plan_id, shipment_id)
+    _write_shipment_confirmation_id(sheet, str(shipment.get("shipmentConfirmationId") or ""))
     return {
         "inboundPlanId": inbound_plan_id,
         "shipmentId": shipment_id,
@@ -59,11 +64,43 @@ def confirm_inbound_shipment(
     }
 
 
+def build_shipment_link(shipment_confirmation_id: str) -> str:
+    """納品番号を Seller Central の納品詳細へのリンクにする"""
+    return f'=HYPERLINK("{SHIPMENT_SUMMARY_URL}{shipment_confirmation_id}", "{shipment_confirmation_id}")'
+
+
+def _write_shipment_confirmation_id(sheet: PurchaseSheet, shipment_confirmation_id: str) -> None:
+    """「納品プラン」列を試作プランIDから納品番号(FBA…)へ差し替える。
+
+    update_status_estimate / fill_sku_fnsku_from_shipment はこの列から shipment ID を読む。
+    wf… のままだと在庫数・受領日・SKU/FNSKU が永久に入らない。
+    """
+    if not SHIPMENT_ID_PATTERN.fullmatch(shipment_confirmation_id):
+        logger.warning("納品番号の形式が想定外のため書き込みません: %s", shipment_confirmation_id)
+        return
+    column = sheet._headers.index("納品プラン") + 1
+    formula = build_shipment_link(shipment_confirmation_id)
+    for row in sheet.data:
+        sheet.write_formula(row.row_number, column, formula)
+    logger.info("納品プラン列に %s を書き込みました (%d行)", shipment_confirmation_id, len(sheet.data))
+
+
 def _resolve_inbound_plan_id(sheet: PurchaseSheet) -> str:
-    plan_cell = str(sheet.data[0].get("納品プラン") or "").strip() if sheet.data else ""
-    inbound_plan_id = extract_inbound_plan_id(plan_cell)
+    if not sheet.data:
+        raise RuntimeError("納品プランIDが取得できません: 対象行がありません")
+    row = sheet.data[0]
+    display_value = str(row.get("納品プラン") or "").strip()
+    inbound_plan_id = extract_inbound_plan_id(display_value)
+    if not is_full_inbound_plan_id(inbound_plan_id):
+        formula = sheet.read_cell_formula(row.row_number, "納品プラン")
+        inbound_plan_id = extract_inbound_plan_id(formula) or inbound_plan_id
     if not inbound_plan_id:
-        raise RuntimeError("納品プランIDが取得できません")
+        raise RuntimeError("納品プランIDが取得できません: 「納品プラン」列が空です")
+    if not is_full_inbound_plan_id(inbound_plan_id):
+        raise RuntimeError(
+            f"納品プランIDが短縮形のままです（取得値: {inbound_plan_id}）。"
+            "「納品プラン」列のHYPERLINK数式にフルID（wf+UUID）が含まれているか確認してください。"
+        )
     click.echo(f"納品プランID: {inbound_plan_id}")
     return inbound_plan_id
 

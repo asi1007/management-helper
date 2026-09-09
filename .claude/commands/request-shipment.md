@@ -1,19 +1,19 @@
 ---
-description: /batch-labels コマンド - 梱包依頼必要の行を納品分類グループごとにラベル+指示書を一括作成し、Chatworkで送付
+description: /request-shipment コマンド - 梱包依頼必要の行を納品分類グループごとにラベル+指示書を一括作成し、Chatworkで送付
 alwaysApply: true
 ---
 
-# /batch-labels コマンド
+# /request-shipment コマンド
 
-ユーザが `/batch-labels` と入力した場合、以下を実行する。
+ユーザが `/request-shipment` と入力した場合、以下を実行する。
 
 ## 事前確認: FC 分割 (自動化済み)
 
-`/batch-labels` は実行時に各グループで SP-API 試作プランを作成し、`packingGroups` を取得して FC 分割を事前検知する。
+`/request-shipment` は実行時に各グループで SP-API 試作プランを作成し、`packingGroups` を取得して FC 分割を事前検知する。
 
 ### 自動的な動作
 
-- **1 packingGroup (分割なし)**: 「納品プラン」列に試作プラン URL を `=HYPERLINK(...)` で書き込み、そのままラベル生成・指示書作成・Chatwork送信に進む。後段 `/update-fulfillment` でこの試作プランが再利用される。
+- **1 packingGroup (分割なし)**: 「納品プラン」列に試作プラン URL を `=HYPERLINK(...)` で書き込み、そのままラベル生成・指示書作成・Chatwork送信に進む。後段 `/apply-inspection` でこの試作プランが再利用される。
 - **2+ packingGroups (分割あり)**: 全グループ走査後に RuntimeError で停止。各 SKU の振り分けを表示。ラベルPDF・指示書・Chatwork送信は一切実行されない (all-or-nothing 方針)。
 
 ### 分割検知時のメッセージ例
@@ -56,8 +56,8 @@ FC分割検知で停止したら、以下を **必ず** 実行する（ユーザ
    for r in [441, 447, 453]:
        sheet.write_cell(r, category_col, 'ファッション1')
    ```
-4. **`/batch-labels --categories "元分類1,元分類2,..."` で全グループ再実行** (分割前グループを新分類名で置き換え、他グループは重複記載しても問題なし)
-5. 古い試作プランは Seller Central で手動削除 (SP-API `cancelInboundPlan` は未実装)。次回 `/update-fulfillment` で新試作プランが自動再利用される
+4. **`/request-shipment --categories "元分類1,元分類2,..."` で全グループ再実行** (分割前グループを新分類名で置き換え、他グループは重複記載しても問題なし)
+5. 古い試作プランは Seller Central で手動削除 (SP-API `cancelInboundPlan` は未実装)。次回 `/apply-inspection` で新試作プランが自動再利用される
 
 ## 実行手順
 
@@ -106,6 +106,7 @@ cd /Users/wadaatsushi/Documents/automation/procurements/management-helper/python
 
 - `--categories` にカンマ区切りで納品分類名を指定
 - 省略すると全グループ（自宅を除く）を処理
+- **CLI サブコマンド名は `batch-labels` のまま**（2026-08-25 にスラッシュコマンドのみ `/request-shipment` へ改称）。`main.py request-shipment` は存在しない
 
 ## 処理内容
 
@@ -122,14 +123,76 @@ cd /Users/wadaatsushi/Documents/automation/procurements/management-helper/python
    - 上記改修は 2026-05-17 のもの (`tests/infrastructure/spreadsheet/test_instruction_sheet_aggregate.py`, `tests/usecases/test_inspection_collect_aggregate.py` で TDD 済み)
 5. **自宅グループ**: 指示書xlsxのみ生成（ラベルPDF・検品指示書はスキップ）
 6. **その他グループ**: ラベルPDF + 指示書xlsx + 検品指示書を生成（Google Drive共有フォルダに保存）
-   - ラベルPDF分割: 合計15,000件超の場合、商品単位で10,000件以下ずつに分割
+   - ラベルPDF分割: SP-API の制限に合わせ、1 SKU あたり 10,000 個・1 リクエスト 100 SKU までに分割（`fulfillmentInbound_2024-03-20` の `MskuQuantity.quantity` maximum=10000 / `mskuQuantities` maxItems=100）。超えた分は `_part2.pdf` 以降に分かれる
 7. 梱包依頼日・プラン別名をシートに書き込み
 8. 集計出力（重量×購入数、送料×購入数、関税×購入数）
 9. Chatworkにグループごとにメッセージ+ファイルを送信（[To:986396]徐雪蘭さん宛）
 
+## 売上/日シートの SKU・fnsku は数式ではなくマスタ (2026-09-07)
+
+以前は SKU 列が `=ARRAYFORMULA(xlookup(A{行},'マネジメント'!$A$4:A,'マネジメント'!$B$4:B))` で、
+**別シートの写しだった**。参照先が誤っていると気づけないまま全工程へ伝播する。
+2026-09-07 に **76 行すべてを値に固定**した（数式 0 件 / 空 0 件 / Amazon と不一致 0 件）。
+
+- `fill_missing_sku_fnsku_from_sales` はこのシートを見るので、**ここが SKU の正本**
+- **新商品を足したときは SKU・fnsku を自分で埋めること。** 数式が無いので自動では入らない
+- 値は Amazon の `listings/2021-08-01/items/{sellerId}` から引く。**シートを根拠にしない**
+
+### 同一 ASIN に新品 SKU と中古 SKU が並存する
+
+`B0FCHM6QQR` は `DB-T0OT-ZDCG`（new_new）と `USED-B0FCHM6QQR`（used_like_new）を持つ。
+ASIN だけで SKU を決めると**中古 SKU を掴む**。補完するときは `conditionType` が `new` で
+始まるものだけを候補にし、**シートに有効な SKU が既にあるならそれを優先する**。
+
+## SKU が本当にその商品か Amazon に確かめる (2026-09-07)
+
+**ラベル PDF と 指示書 xlsx は別のソースから作られる。**
+
+| 成果物 | FNSKU の出どころ |
+|---|---|
+| ラベル PDF | **SKU を SP-API に渡して Amazon が生成** |
+| 指示書 xlsx | **仕入管理シートの FNSKU 列** |
+
+そのためシートの SKU が別商品を指していても、**両方それらしく出来上がって誰も気づかない**。
+指示書には正しい FNSKU が印字され、ラベルだけが別商品になる。
+
+`_validate_sku_identity` が全 SKU を `listings/2021-08-01/items/{sellerId}/{sku}` で引き、
+**シートの ASIN・FNSKU と一致しなければ RuntimeError で停止**する（行番号付きで全件report）。
+
+### 2026-09-04 の事故
+
+売上/日シートの `B0G1J3NW6Y`（ジュエリー鑑定用ルーペ40倍）の SKU 列に
+**別商品 `XM-ZLBK-D2DZ`（2L版アクリルフォトフレーム）が入っていた**。
+`fill_missing_sku_fnsku_from_sales` はこれを検証せず仕入管理へコピーし、
+ラベル 800 枚が `X001AFD3G7`（フォトフレームの FNSKU）で刷られて検品担当へ渡った。
+
+- 指示書 xlsx の FNSKU 列はシートの値 `X001BZE9Q9` で**正しく見えていた**
+- 実行後の検証は**ページ数しか見ていなかった**ため通過した
+- 同じ誤りは 2025-11-30 の行にも既に存在しており、**シートに前からあった誤りを広げた**
+
+**ASIN と SKU の対応は Amazon が正。シートは写しにすぎない。**
+シートを根拠に SKU を決めてはいけない。
+
+## 指示書に商品画像が無ければエラーで停止する (2026-09-04)
+
+指示書 xlsx の A 列には商品画像が必ず入る。**1 ASIN でも画像が取得できなければ
+`InstructionSheet._collect_images` が RuntimeError で停止**し、ラベル PDF も Chatwork 送信も走らない。
+検品担当は画像で現物を照合するため、画像なしの指示書を送ってはいけない。
+
+画像は次の順で解決する。
+
+1. **Keepa** (`imagesCSV` → `images[0].m/l`)
+2. **SP-API カタログ** (`catalog/2022-04-01/items/{asin}?includedData=images` の `variant=MAIN`)
+
+**新規出品直後は両方とも空になる。** Amazon のカタログに画像が反映されるまで数時間かかるため、
+出品・画像登録の当日に梱包依頼を出すと止まる。止まったら画像の反映を待って再実行する。
+
+`images-na.ssl-images-amazon.com/images/P/{ASIN}...` で URL を組み立てる方法は使えない
+（200 を返すが実体は 43 バイトの透明 GIF）。
+
 ## 自動検証 (実行時に常時、2026-05-19 強化)
 
-`/batch-labels` は実行中に以下の検証を自動実行する。乖離があれば RuntimeError で停止し、ユーザー確認が促される。
+`/request-shipment` は実行中に以下の検証を自動実行する。乖離があれば RuntimeError で停止し、ユーザー確認が促される。
 
 ### A. 依頼対象漏れ検知 (`_detect_missing_rows`)
 
@@ -160,7 +223,7 @@ cd /Users/wadaatsushi/Documents/automation/procurements/management-helper/python
 
 ## 実行後の検証 (必須)
 
-batch-labels が終わったら、**必ず**指示書 xlsx の数量とラベル PDF のページ数が想定通りかを確認する。Amazon に送るラベル PDF は **1ページ=40ラベル** なので、合計数 / 40 (切り上げ) が期待ページ数。
+`/request-shipment` が終わったら、**必ず**指示書 xlsx の数量とラベル PDF のページ数が想定通りかを確認する。Amazon に送るラベル PDF は **1ページ=40ラベル** なので、合計数 / 40 (切り上げ) が期待ページ数。
 
 ### 確認手順
 
@@ -219,7 +282,7 @@ print(f'期待ページ計={expected}')
 
 ### 検証で NG が出た場合
 
-- 数量と PDF ページが合わない → `InstructionSheet._extract_rows` のSKU集約と `Downloader` のラベル分割ロジック (15,000件超で分割など) を疑う
+- 数量と PDF ページが合わない → `InstructionSheet._extract_rows` のSKU集約と `Downloader` のラベル分割ロジック (1 SKU 10,000個・1リクエスト100 SKU で分割) を疑う
 - 指示書 xlsx の数量と仕入管理シート「購入数」が合わない → SKU集約キー (SKU 空欄時は FNSKU fallback) の挙動を確認
 - 修正後は **Chatwork 送付済みを取り下げ → 再実行** (下記「再実行する場合」参照)
 
@@ -248,11 +311,68 @@ Chatworkファイルエラー (0517ノーマル検品指示書.xlsx): 413 HTTP c
 
 2. **Drive 上のファイル ID は MCP `mcp__claude_ai_Google_Drive__search_files` で取得**: `title = '0517ノーマル検品指示書.xlsx'` 等
 
-3. (将来改修) `batch-labels` 内に「10MB超なら自動で Drive リンク fallback」を追加検討
+3. (将来改修) `main.py batch-labels` の実装に「10MB超なら自動で Drive リンク fallback」を追加検討
+
+## 空輸のときは `--air` を付ける (2026-09-09)
+
+```bash
+python3 main.py batch-labels --categories "ノーマル" --air
+```
+
+**プラン別名の末尾に「空輸」が付く**（`09/09ノーマル` → `09/09ノーマル空輸`）。
+海上輸送か空輸かは後工程で効くのに、これまでシートのどこにも残っていなかった。
+2026-09-04 は Chatwork の本文で伝えただけで、シートには痕跡がなかった。
+
+後段の `/confirm-shipment` はプラン別名で対象を選ぶので、**空輸便は別名で分かれる**。
+到着予定は既定が「出荷日の1ヶ月後」（海上前提）なので、空輸なら `--lead-days 14` で上書きする。
+
+## 出した依頼を取り消す（`revert-shipment`, 2026-09-07 追加）
+
+指示書を送ってしまった後に「やっぱり出さない」となったときは、手で消さずにこれを使う。
+
+```bash
+python3 main.py revert-shipment --alias "09/09ノーマル"                    # ドライラン（既定）
+python3 main.py revert-shipment --alias "09/09ノーマル" --execute          # シートを巻き戻す
+python3 main.py revert-shipment --alias "09/09ノーマル" --execute --delete-chatwork  # Chatworkの送付も取り下げる
+```
+
+| オプション | 既定 | 説明 |
+|---|---|---|
+| `--alias` | 必須 | 「プラン別名」で対象を選ぶ。**行番号では指定しない**（アーカイブで動くため） |
+| `--execute` | 無し | 付けるまでドライラン。対象行を一覧表示するだけ |
+| `--delete-chatwork` | 無し | 同じ依頼で送った本文・ラベル・指示書・検品指示書を削除する |
+| `--since-hours` | 24 | Chatwork を遡る時間 |
+
+### 何を消して何を残すか
+
+**クリアするのは `梱包依頼日` `プラン別名` `納品プラン` の 3 列だけ。**
+状態は数式なので書かない。`梱包依頼日` が空になれば `ifs` が自動で `梱包依頼必要` に戻る。
+
+**購入数・SKU・FNSKU・在庫数・受領日には触れない。** 補完した SKU をやり直しのたびに失うのは無駄で、
+2026-09-04 の誤ラベル事故のように SKU を直した直後に消すと修正がなかったことになる。
+
+### Chatwork の取り下げ対象の決め方
+
+**本文一致で消してはいけない。** 過去の投稿を巻き込む（実際に Chatwork の過去 5 件を誤削除した）。
+`build_target_keywords` がプラン別名から 3 つの語を作り、**自分が `--since-hours` 以内に送った投稿**だけに絞る。
+
+| 語 | 当てるもの |
+|---|---|
+| `梱包指示書` | 本文「【ノーマル】11件の梱包指示書を作成したので送付します。」 |
+| `0909ノーマル` | `0909ノーマル指示書.xlsx` / `0909ノーマル検品指示書.xlsx` |
+| `2026-09-09_ノーマル` | ラベル `2026-09-09_ノーマル.pdf` |
+
+同じ日に送った**納品ラベル（`FBA…_納品ラベル.pdf`）は当たらない**ので消えない。
+削除は不可逆なので、まずドライランで対象 ID を必ず確認すること。
+
+### 試作納品プランは消えない
+
+`納品プラン` 列を空にしても Amazon 側の試作プランは残る。実行後に URL を表示するので、
+不要なら Seller Central で手動削除する（SP-API の `cancelInboundPlan` は未実装）。
 
 ## 再実行する場合の状態リセット
 
-batch-labels 実行後は「状態」列が「梱包依頼必要」→「梱包依頼済み」or「自宅発送」に更新され、再実行しても警告 (`納品分類「...」の行がありません`) で何も処理されない。再実行したい場合は、該当行の「状態」を一時的に「梱包依頼必要」に戻す:
+`/request-shipment` 実行後は「状態」列が「梱包依頼必要」→「梱包依頼済み」or「自宅発送」に更新され、再実行しても警告 (`納品分類「...」の行がありません`) で何も処理されない。再実行したい場合は、該当行の「状態」を一時的に「梱包依頼必要」に戻す:
 
 ```python
 ws = repo.open_worksheet(cfg.sheet_id, cfg.purchase_sheet_name)

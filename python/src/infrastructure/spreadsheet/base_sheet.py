@@ -71,6 +71,12 @@ class BaseSheet:
         logger.info("%sでフィルタリング: %d行が見つかりました", column_name, len(filtered))
         return filtered
 
+    def read_cell_formula(self, row_number: int, column_name: str) -> str:
+        column_num = self._get_column_index_by_name(column_name) + 1
+        cell_label = gspread.utils.rowcol_to_a1(row_number, column_num)
+        cell = self._worksheet.acell(cell_label, value_render_option="FORMULA")
+        return str(cell.value or "")
+
     def write_cell(self, row_num: int, column_num: int, value: Any) -> None:
         self._worksheet.update_cell(row_num, column_num, value)
         logger.info("%d行目の%d列に書き込みました", row_num, column_num)

@@ -68,6 +68,17 @@ cd /Users/wadaatsushi/Documents/automation/procurements/management-helper/python
   この方式でも手数料は ¥0 だった
 - 実装は `usecases/set_packing_info.py` の `build_packing_body()`。boxes に `items` は入れない
 
+## 出荷日と到着予定期間はユーザーに確認しない（2026-09-04 決定）
+
+**両方とも既定値をそのまま使う。AskUserQuestion で聞かないこと。**
+
+| 項目 | 既定 |
+|---|---|
+| 出荷日 | **翌日**（`--ship-date` 省略） |
+| 到着予定期間 | **出荷日の1ヶ月後**（`--lead-days` 省略） |
+
+明示の指示があるときだけオプションで上書きする（例: 空輸と分かっている便は `--lead-days 14`）。
+
 ## 到着予定期間（配送ウィンドウ）の自動設定
 
 **既定は「出荷日の1ヶ月後」**。`domain/shipment/delivery_window_selector.py` が
@@ -87,11 +98,57 @@ Amazon の提示する配送ウィンドウ候補のうち、開始日が `出�
 5. `generateTransportationOptions` → **「その他」(USE_YOUR_OWN_CARRIER / GROUND_SMALL_PARCEL)** を `confirmTransportationOptions`
 6. 「段ボール箱数」列に箱数を書き込み、納品番号（`shipmentConfirmationId`）を出力
 
+## 確定したら「納品プラン」列は納品番号へ置き換わる (2026-09-09)
+
+`/request-shipment` が書くのは**試作プランID（`wf…`）**で、`/confirm-shipment` が成功すると
+**納品番号（`FBA15GHML0X3`）に上書きされる**。
+
+**これは表示の都合ではない。** `update_status_estimate` と `fill_sku_fnsku_from_shipment` は
+この列から shipment ID を読むため、**`wf…` のままだと在庫数・受領日・SKU/FNSKU が永久に入らない**。
+
+書き込む形は **`=HYPERLINK(".../fba/inbound-shipment/summary/{納品番号}", "{納品番号}")`**。
+表示値は納品番号そのものなので `get_all_values()` から読む側は影響を受けない。
+URL に `#` を使わない（折り返しで切れると別ページが開く）。
+
+2026-09-09 時点で書き換えが漏れており、**68 行が `wf…` のまま**だった（`_write_shipment_confirmation_id` を追加して解消）。
+過去分は placementOptions → `shipmentIds` → `getShipment` の順に辿って **61 行を復旧**した。
+**`inboundPlans/{id}/shipments` は 403**（権限外）なので使えない。
+
+`wf…` が残るのは**まだ確定していない**案件だけ。確定済みなのに `wf…` なら書き込みが失敗している。
+
+## 既知の落とし穴
+
+### 納品プラン列の表示値は短縮ID。フルIDは HYPERLINK 数式の中にある
+
+「納品プラン」列は `=HYPERLINK("...confirm_content_step?wf={フルID}","{短縮ID}")` で、
+**セルの表示値は `wf545a35b7` のような短縮ID**。SP-API の `inboundPlanId` は 38 文字以上必須で、
+短縮IDを渡すと全エンドポイントが `InvalidInput ... Member must have length greater than or equal to 38`
+の 400 を返す。
+
+`_resolve_inbound_plan_id` は表示値がフルID形式でなければ `read_cell_formula` で数式を読み直す。
+それでもフルIDが取れなければ**短縮IDのまま API を叩かずエラーで停止**する（2026-09-04 修正）。
+
+### generate 直後の confirm は 400 を返すことがある
+
+`generateDeliveryWindowOptions` → `confirmDeliveryWindowOptions` のように
+生成直後に確定を呼ぶと、候補が `AVAILABLE` で返っていても **400 になることがある**。
+数秒待って同じ ID で再送すると 202 で通る。
+
+`InboundPlanCreator._post_with_retry` が **400 のみ 5 秒間隔で最大 3 回再試行**する（2026-09-04 追加）。
+403 など他のステータスは恒久的な失敗として即座に投げる。
+
+### 途中で落ちたら最初からやり直せない
+
+`confirmPackingOption` / `confirmPlacementOption` は確定済みの状態で再実行すると 400 になる。
+`/confirm-shipment` が途中で落ちた場合は、`get_shipment` で
+`selectedDeliveryWindow` / `selectedTransportationOptionId` を見てどこまで進んだかを確認し、
+**残りの工程だけを実行する**こと。
+
 ## 注意事項
 
 - **配送業者は必ず「その他」**。ヤマト・日本郵便（AMAZON_PARTNERED_CARRIER）を選ぶと数万円の請求が発生する。
   該当オプションが見つからなければ RuntimeError で停止する
-- **梱包グループが2つ以上に分かれる案件は対象外**。`/batch-labels` の FC 分割 pre-check で
+- **梱包グループが2つ以上に分かれる案件は対象外**。`/request-shipment` の FC 分割 pre-check で
   事前に分類を分けておくこと
 - **輸送箱ラベルの PDF 取得は SP-API では 403**（権限外）。Seller Central UI から
   `print_labels_step?wf={planId}` を開き、ドロップダウンを **「A4版6面（99 x 105 mm）」** に

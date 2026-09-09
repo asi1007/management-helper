@@ -43,7 +43,12 @@ def set_packing_info(config: AppConfig, repo: BaseSheetsRepository, row_numbers:
 
 
 PLAN_ID_PATTERN = r"wf[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|wf[a-zA-Z0-9]+"
+FULL_PLAN_ID_PATTERN = r"^wf[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
 MANUAL_PROCESS = "MANUAL_PROCESS"
+
+
+def is_full_inbound_plan_id(value: str) -> bool:
+    return bool(re.match(FULL_PLAN_ID_PATTERN, value or ""))
 
 
 def extract_inbound_plan_id(cell_value: str) -> str:

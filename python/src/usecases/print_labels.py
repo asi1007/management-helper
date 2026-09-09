@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import click
@@ -31,7 +32,7 @@ def generate_labels_and_instructions(
     if inspection_url:
         sheet.write_formula(2, 3, f'=HYPERLINK("{inspection_url}", "検品シート")')
     label_urls = _create_label_pdf(sheet.data, access_token, drive_service)
-    instruction_url = _create_instruction_sheet(config, repo, drive_service, sheet.data)
+    instruction_url = _create_instruction_sheet(config, sheet.data, access_token)
     _write_to_sheet(sheet, instruction_url, label_urls)
 
 
@@ -49,10 +50,14 @@ def _create_label_pdf(data: list[Any], access_token: str, drive_service: Any) ->
 
 
 def _create_instruction_sheet(
-    config: AppConfig, repo: BaseSheetsRepository, drive_service: Any, data: list[Any]
+    config: AppConfig, data: list[Any], access_token: str
 ) -> str:
-    instruction = InstructionSheet(repo, drive_service, config.keepa_api_key)
-    return instruction.create(data)
+    instruction = InstructionSheet(
+        save_dir=Path(config.instruction_dir),
+        keepa_api_key=config.keepa_api_key,
+        access_token=access_token,
+    )
+    return str(instruction.create(data))
 
 
 def _write_to_sheet(sheet: PurchaseSheet, instruction_url: str, label_urls: list[str]) -> None:

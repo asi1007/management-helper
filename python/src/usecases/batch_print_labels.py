@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import click
 import httpx
@@ -23,9 +23,15 @@ from usecases.create_inspection_sheet import create_inspection_sheet_if_needed
 
 logger = logging.getLogger(__name__)
 
+LISTINGS_SELLER_ID = "APS8L6SC4MEPF"
+LISTINGS_MARKETPLACE_ID = "A1VC38T7YXB528"
+
 
 def batch_print_labels(
-    config: AppConfig, repo: BaseSheetsRepository, category_filter: list[str] | None = None
+    config: AppConfig,
+    repo: BaseSheetsRepository,
+    category_filter: list[str] | None = None,
+    plan_name_suffix: str = "",
 ) -> None:
     access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
 
@@ -55,6 +61,7 @@ def batch_print_labels(
 
     fill_missing_sku_fnsku(repo, sheet)
     _validate_no_blank_sku(sheet.data)
+    _validate_sku_identity(sheet.data, _make_sku_identity_resolver(access_token))
 
     click.echo("\n[FC分割pre-check] 試作プランを作成して packingGroups を確認...")
     creator = InboundPlanCreator(auth_token=access_token)
@@ -78,9 +85,9 @@ def batch_print_labels(
         else:
             label_paths = _create_label_pdf(rows, access_token, config, category)
             inspection_path = _create_inspection_sheet(config, repo, rows, category)
-        instruction_path = _create_instruction_sheet(config, rows)
+        instruction_path = _create_instruction_sheet(config, rows, access_token)
 
-        _write_to_sheet(sheet, str(instruction_path))
+        _write_to_sheet(sheet, str(instruction_path), plan_name_suffix)
 
         if label_paths:
             click.echo("  ラベル:")
@@ -110,6 +117,74 @@ def batch_print_labels(
 
 def _validate_no_blank_sku(rows: list[BaseRow]) -> None:
     _validate_sku_fnsku(rows)
+
+
+def _validate_sku_identity(
+    rows: list[BaseRow], resolve: Callable[[str], tuple[str, str] | None]
+) -> None:
+    """SKU が本当にその行の ASIN/FNSKU の商品か Amazon に問い合わせて確かめる。
+
+    ラベル PDF は SKU から SP-API が生成し、指示書 xlsx の FNSKU 列はシートの値を使う。
+    ソースが違うので、シートの SKU が別商品を指していても両方それらしく出来上がってしまう。
+    2026-09-04 にこれで 800 枚の誤ラベルを送った。
+    """
+    resolved: dict[str, tuple[str, str] | None] = {}
+    errors: list[str] = []
+    for row in rows:
+        sku = str(row.get("SKU") or "").strip()
+        if not sku:
+            continue
+        if sku not in resolved:
+            resolved[sku] = resolve(sku)
+        actual = resolved[sku]
+        if actual is None:
+            errors.append(f"行{row.row_number}: SKU {sku} がAmazonの出品に存在しません")
+            continue
+        actual_asin, actual_fnsku = actual
+        sheet_asin = str(row.get("ASIN") or "").strip()
+        sheet_fnsku = str(row.get("FNSKU") or "").strip()
+        if sheet_asin and actual_asin and sheet_asin != actual_asin:
+            errors.append(
+                f"行{row.row_number}: SKU {sku} は ASIN {actual_asin} (FNSKU {actual_fnsku}) の商品です"
+                f"（シートのASINは {sheet_asin}）"
+            )
+        elif sheet_fnsku and actual_fnsku and sheet_fnsku != actual_fnsku:
+            errors.append(
+                f"行{row.row_number}: SKU {sku} の FNSKU は {actual_fnsku} です"
+                f"（シートは {sheet_fnsku}）"
+            )
+    if errors:
+        raise RuntimeError(
+            "SKUと商品の対応が合いません:\n  " + "\n  ".join(errors) +
+            "\nラベルはSKUから生成されるため、このまま進めると別商品のラベルが刷られます。"
+            "仕入管理シートと売上/日シートのSKU列を直してから再実行してください。"
+        )
+
+
+def _make_sku_identity_resolver(access_token: str) -> Callable[[str], tuple[str, str] | None]:
+    import urllib.parse
+
+    import httpx
+
+    def resolve(sku: str) -> tuple[str, str] | None:
+        url = (
+            f"https://sellingpartnerapi-fe.amazon.com/listings/2021-08-01"
+            f"/items/{LISTINGS_SELLER_ID}/{urllib.parse.quote(sku, safe='')}"
+        )
+        response = httpx.get(
+            url,
+            params={"marketplaceIds": LISTINGS_MARKETPLACE_ID, "includedData": "summaries"},
+            headers={"Accept": "application/json", "x-amz-access-token": access_token},
+            timeout=30.0,
+        )
+        if response.status_code != 200:
+            return None
+        summaries = response.json().get("summaries") or []
+        if not summaries:
+            return None
+        return str(summaries[0].get("asin") or ""), str(summaries[0].get("fnSku") or "")
+
+    return resolve
 
 
 def _detect_missing_rows(requested_rows: list[BaseRow], processed_row_numbers: list[int]) -> list[int]:
@@ -315,9 +390,11 @@ def _to_float(value: Any) -> float:
         return 0.0
 
 
-def _create_instruction_sheet(config: AppConfig, data: list[Any]) -> Path:
+def _create_instruction_sheet(config: AppConfig, data: list[Any], access_token: str) -> Path:
     save_dir = Path(config.instruction_dir)
-    instruction = InstructionSheet(save_dir=save_dir, keepa_api_key=config.keepa_api_key)
+    instruction = InstructionSheet(
+        save_dir=save_dir, keepa_api_key=config.keepa_api_key, access_token=access_token
+    )
     return instruction.create(data)
 
 
@@ -327,11 +404,11 @@ def _create_inspection_sheet(
     return create_inspection_sheet_if_needed(config, repo, data, category)
 
 
-def _write_to_sheet(sheet: PurchaseSheet, instruction_path: str) -> None:
+def _write_to_sheet(sheet: PurchaseSheet, instruction_path: str, plan_name_suffix: str = "") -> None:
     today = datetime.now().strftime("%Y/%m/%d")
     sheet.write_column_by_func("梱包依頼日", lambda _row, _i: today)
     try:
-        sheet.write_plan_name_to_rows(instruction_path)
+        sheet.write_plan_name_to_rows(instruction_path, plan_name_suffix)
     except Exception as e:
         logger.warning("プラン別名列への書き込みでエラー: %s", e)
 

@@ -168,6 +168,9 @@ def test_batch_print_labels_invokes_fc_split_check(mocker):
     # SKU/FNSKU 補完は usecases.sku_completion に集約されているのでそこをパッチ
     mocker.patch.object(mod, "fill_missing_sku_fnsku")
 
+    # SKU の実在確認は SP-API を叩くのでパッチ
+    mocker.patch.object(mod, "_validate_sku_identity")
+
     # InboundPlanCreator を mock (FC分割なし)
     mock_creator_cls = mocker.patch.object(mod, "InboundPlanCreator")
     mock_creator_cls.return_value.create_plan.return_value = {

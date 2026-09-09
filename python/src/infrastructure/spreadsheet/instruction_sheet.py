@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -13,20 +14,25 @@ logger = logging.getLogger(__name__)
 
 TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "instruction_template.xlsx"
 START_ROW = 8
+MARKETPLACE_ID = "A1VC38T7YXB528"
+CATALOG_ENDPOINT = "https://sellingpartnerapi-fe.amazon.com/catalog/2022-04-01/items"
+MAIN_IMAGE_VARIANT = "MAIN"
 
 
 class InstructionSheet:
-    def __init__(self, save_dir: Path, keepa_api_key: str) -> None:
+    def __init__(self, save_dir: Path, keepa_api_key: str, access_token: str | None = None) -> None:
         self._save_dir = save_dir
         self._keepa_api_key = keepa_api_key
+        self._access_token = access_token
 
     def create(self, data: list[Any]) -> Path:
         rows = self._extract_rows(data)
         plan_name = self._generate_plan_name(data)
+        images = self._collect_images(rows)
 
         wb = load_workbook(str(TEMPLATE_PATH))
         ws = wb.active
-        self._write_row_data(ws, rows)
+        self._write_row_data(ws, rows, images)
 
         self._save_dir.mkdir(parents=True, exist_ok=True)
         file_path = self._save_dir / f"{plan_name}.xlsx"
@@ -90,7 +96,7 @@ class InstructionSheet:
             category = ""
         return f"{date_str}{category}指示書"
 
-    def _write_row_data(self, ws: Any, rows: list[dict[str, str]]) -> None:
+    def _write_row_data(self, ws: Any, rows: list[dict[str, str]], images: dict[str, bytes]) -> None:
         for i, row_data in enumerate(rows):
             row_num = START_ROW + i
             # B列: FNSKU, C列: ASIN, D列: 数量（テンプレートの列順に合わせる）
@@ -100,21 +106,79 @@ class InstructionSheet:
             ws.cell(row=row_num, column=5, value=row_data["remarks"])
             ws.cell(row=row_num, column=6, value=row_data["order_number"])
 
-            image_url = self._get_product_image(row_data["asin"])
-            if image_url:
-                try:
-                    img_response = httpx.get(image_url, timeout=10.0)
-                    if img_response.status_code == 200:
-                        import tempfile
-                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                            tmp.write(img_response.content)
-                            tmp_path = tmp.name
-                        img = XlImage(tmp_path)
-                        img.width = 75
-                        img.height = 75
-                        ws.add_image(img, f"A{row_num}")
-                except Exception as e:
-                    logger.warning("画像挿入エラー (%s): %s", row_data["asin"], e)
+            img = XlImage(io.BytesIO(images[row_data["asin"]]))
+            img.width = 75
+            img.height = 75
+            ws.add_image(img, f"A{row_num}")
+
+    def _collect_images(self, rows: list[dict[str, str]]) -> dict[str, bytes]:
+        images: dict[str, bytes] = {}
+        missing: list[str] = []
+        for asin in self._unique_asins(rows):
+            if not asin:
+                missing.append("(ASIN空欄)")
+                continue
+            image = self._load_image(asin)
+            if image is None:
+                missing.append(asin)
+                continue
+            images[asin] = image
+        if missing:
+            raise RuntimeError(
+                "指示書に載せる商品画像が取得できません: " + ", ".join(missing) +
+                "。検品担当が現物と照合できないため中断しました。"
+                "Amazonの商品ページに画像が登録されているか確認してください"
+                "（新規出品直後はカタログに反映されるまで数時間かかります）。"
+            )
+        return images
+
+    def _unique_asins(self, rows: list[dict[str, str]]) -> list[str]:
+        seen: list[str] = []
+        for row_data in rows:
+            asin = str(row_data.get("asin") or "").strip()
+            if asin not in seen:
+                seen.append(asin)
+        return seen
+
+    def _load_image(self, asin: str) -> bytes | None:
+        image_url = self._resolve_image_url(asin)
+        if not image_url:
+            return None
+        return self._fetch_image_bytes(image_url)
+
+    def _resolve_image_url(self, asin: str) -> str | None:
+        return self._get_product_image(asin) or self._get_catalog_image(asin)
+
+    def _fetch_image_bytes(self, image_url: str) -> bytes | None:
+        try:
+            response = httpx.get(image_url, timeout=10.0)
+        except Exception as e:
+            logger.warning("画像ダウンロードエラー (%s): %s", image_url, e)
+            return None
+        if response.status_code != 200 or not response.content:
+            logger.warning("画像ダウンロード失敗 (%s): HTTP %s", image_url, response.status_code)
+            return None
+        return response.content
+
+    def _get_catalog_image(self, asin: str) -> str | None:
+        if not asin or not self._access_token:
+            return None
+        try:
+            response = httpx.get(
+                f"{CATALOG_ENDPOINT}/{asin}",
+                params={"marketplaceIds": MARKETPLACE_ID, "includedData": "images"},
+                headers={"Accept": "application/json", "x-amz-access-token": self._access_token},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            for image_set in response.json().get("images") or []:
+                for image in image_set.get("images") or []:
+                    if image.get("variant") == MAIN_IMAGE_VARIANT and image.get("link"):
+                        return str(image["link"])
+            return None
+        except Exception as e:
+            logger.warning("カタログ画像取得エラー (%s): %s", asin, e)
+            return None
 
     def _get_product_image(self, asin: str) -> str | None:
         if not asin or not self._keepa_api_key:
