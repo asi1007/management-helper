@@ -58,6 +58,8 @@ class AppConfig:
     chatwork_api_token: str
     chatwork_room_id: str
     chatwork_to_account_id: str
+    todoist_api_token: str
+    todoist_project: str
 
     @classmethod
     def from_env(cls) -> AppConfig:
@@ -82,6 +84,8 @@ class AppConfig:
             chatwork_api_token=os.getenv("CHATWORK_API_TOKEN", ""),
             chatwork_room_id=os.getenv("CHATWORK_ROOM_ID", ""),
             chatwork_to_account_id=os.getenv("CHATWORK_TO_ACCOUNT_ID", ""),
+            todoist_api_token=os.getenv("TODOIST_API_TOKEN", ""),
+            todoist_project=os.getenv("TODOIST_PROJECT", "INBOX"),
         )
 
     @classmethod

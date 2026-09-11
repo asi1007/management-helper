@@ -1,24 +1,39 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 import gspread
 
 from shared.config import AppConfig
+from domain.inventory.value_objects.stock_shortfall import collect_shortfalls
 from infrastructure.spreadsheet.base_sheets_repository import BaseSheetsRepository
 from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
+from infrastructure.todoist.stock_shortfall_notifier import StockShortfallNotifier
 
 logger = logging.getLogger(__name__)
 
 INVENTORY_COL = "在庫数"
 STOCK_SHEET_NAME = "stock"
+# FC内にあって、これから売れる数量。
+#   受領中を外すと納品を受領した直後に在庫0と誤判定する。
+#   転送中・処理中はFC内にあるので数える。
+#   注文確保は客の注文が付いていて出荷されるので数えない。
+#   予約済合計(=注文確保+転送中+処理中)は二重計上になるので使わない。
+STOCK_QUANTITY_COLUMNS = ("販売可能", "受領中", "転送中", "処理中")
 
 
 class StockUnavailableError(RuntimeError):
     pass
 
 
-def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
+def update_inventory_estimate(
+    config: AppConfig, repo: BaseSheetsRepository, notifier: object | None = None
+) -> None:
+    notifier = notifier or StockShortfallNotifier(
+        api_token=getattr(config, "todoist_api_token", ""),
+        project=getattr(config, "todoist_project", "INBOX"),
+    )
     asin_to_stock = _load_asin_to_available_stock(repo, config.sheet_id)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.filter("状態", ["在庫あり", "在庫なし"])
@@ -32,21 +47,40 @@ def update_inventory_estimate(config: AppConfig, repo: BaseSheetsRepository) -> 
             asin_groups.setdefault(asin, []).append(row)
     inv_col = sheet._get_column_index_by_name(INVENTORY_COL) + 1
     updates: list[dict] = []
+    skipped: list[str] = []
+    assigned: dict[str, int] = {}
     for asin, rows in asin_groups.items():
-        available = asin_to_stock.get(asin, 0)
+        # stockに無い = 在庫が0ではなく「情報が無い」。0を書くと在庫なし扱いで行が消える。
+        if asin not in asin_to_stock:
+            skipped.append(asin)
+            continue
+        available = asin_to_stock[asin]
         remaining = available
+        assigned[asin] = 0
         for row in reversed(rows):
             purchase_qty = int(row.get("購入数") or 0)
             estimated = min(purchase_qty, remaining)
             remaining = max(0, remaining - estimated)
+            assigned[asin] += estimated
             existing = int(row.get(INVENTORY_COL) or 0)
             if estimated != existing:
                 cell = gspread.utils.rowcol_to_a1(row.row_number, inv_col)
                 updates.append({"range": cell, "values": [[estimated]]})
             logger.info("行%d: ASIN=%s, 在庫推測=%d (既存=%d)", row.row_number, asin, estimated, existing)
+    if skipped:
+        logger.warning("stockに無いため在庫数を更新しなかったASIN: %s", ", ".join(skipped))
     if updates:
         sheet._worksheet.batch_update(updates, value_input_option="USER_ENTERED")
     logger.info("在庫数更新完了: written=%d, asins=%d", len(updates), len(asin_groups))
+    # FBAにあるのに行へ収まらない在庫は、受け皿の行が消えた合図。放置すると気づけない
+    shortfalls = collect_shortfalls(asin_to_stock, assigned)
+    if shortfalls:
+        logger.warning(
+            "FBA在庫が行に収まっていません: %d件 %d個",
+            len(shortfalls),
+            sum(s.quantity for s in shortfalls),
+        )
+    notifier.notify(shortfalls, date.today().isoformat())
 
 
 def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> dict[str, int]:
@@ -60,21 +94,31 @@ def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> 
         raise StockUnavailableError(f"{STOCK_SHEET_NAME}シートが空です")
     headers = [str(h).strip() for h in all_values[0]]
     asin_col = next((i for i, h in enumerate(headers) if h.lower() == "asin"), None)
-    available_col = next((i for i, h in enumerate(headers) if "販売可能" in h), None)
-    if asin_col is None or available_col is None:
+    quantity_cols = [
+        next((i for i, h in enumerate(headers) if keyword in h), None)
+        for keyword in STOCK_QUANTITY_COLUMNS
+    ]
+    if asin_col is None or any(col is None for col in quantity_cols):
         raise StockUnavailableError(
-            f"{STOCK_SHEET_NAME}シートにASINまたは販売可能列がありません: headers={headers}"
+            f"{STOCK_SHEET_NAME}シートにASINまたは{'・'.join(STOCK_QUANTITY_COLUMNS)}列が"
+            f"ありません: headers={headers}"
         )
+    last_col = max([asin_col, *quantity_cols])
     result: dict[str, int] = {}
     for row_values in all_values[1:]:
-        if len(row_values) <= max(asin_col, available_col):
+        if len(row_values) <= last_col:
             continue
         asin = str(row_values[asin_col]).strip()
-        stock = _parse_stock_quantity(row_values[available_col])
+        stock = sum(_parse_stock_quantity(row_values[col]) for col in quantity_cols)
         if asin:
             result[asin] = result.get(asin, 0) + stock
     if not result:
         raise StockUnavailableError(f"{STOCK_SHEET_NAME}シートからASINを1件も読み取れません")
+    if not any(result.values()):
+        raise StockUnavailableError(
+            f"{STOCK_SHEET_NAME}シートの在庫が全{len(result)}ASINで0です。"
+            "IMPORTRANGEの読み込み失敗が疑われるため中断しました"
+        )
     return result
 
 

@@ -1,3 +1,4 @@
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -9,11 +10,14 @@ from usecases.archive_out_of_stock import (
     archive_out_of_stock,
 )
 
-HEADERS = ["備考", "行番号", "ASIN", "状態"]
+HEADERS = ["備考", "行番号", "ASIN", "状態", "受領日"]
+RECEIVED_LAST_MONTH = 46248  # 2026-08-14
+TODAY = date(2026, 10, 2)
 
 
 def _row(row_number: int, status: str) -> BaseRow:
-    return BaseRow(["", str(row_number), "B001", status], HEADERS.index, row_number)
+    values = ["", str(row_number), "B001", status, str(RECEIVED_LAST_MONTH)]
+    return BaseRow(values, HEADERS.index, row_number)
 
 
 class FakeSpreadsheetBody:
@@ -25,9 +29,13 @@ class FakeSpreadsheetBody:
 
 
 class FakePurchaseWorksheet:
-    def __init__(self) -> None:
+    def __init__(self, received_rows: int = 0) -> None:
         self.id = 1
         self.spreadsheet = FakeSpreadsheetBody()
+        self._received_rows = received_rows
+
+    def get_values(self, range_name: str, value_render_option: str | None = None) -> list[list]:
+        return [[RECEIVED_LAST_MONTH] for _ in range(self._received_rows)]
 
 
 class FakeArchiveWorksheet:
@@ -57,7 +65,12 @@ class FakeRepository:
 class FakePurchaseSheet:
     def __init__(self, rows: list[BaseRow]) -> None:
         self.all_data = rows
-        self._worksheet = FakePurchaseWorksheet()
+        self.start_row = 5
+        last_row = max((r.row_number for r in rows), default=4)
+        self._worksheet = FakePurchaseWorksheet(last_row - self.start_row + 1)
+
+    def _get_column_index_by_name(self, column_name: str) -> int:
+        return HEADERS.index(column_name)
 
 
 CONFIG = SimpleNamespace(sheet_id="sheet", purchase_sheet_name="仕入管理")
@@ -74,7 +87,7 @@ def test_archives_rows_within_limit(mocker):
     rows = [_row(n, "在庫なし") for n in range(6, 6 + MAX_ARCHIVE_ROWS)]
     archive, sheet = _run(mocker, rows)
 
-    archive_out_of_stock(CONFIG, FakeRepository(archive))
+    archive_out_of_stock(CONFIG, FakeRepository(archive), today=TODAY)
 
     assert len(archive.appended) == MAX_ARCHIVE_ROWS
     assert len(sheet._worksheet.spreadsheet.requests) == MAX_ARCHIVE_ROWS
@@ -85,7 +98,7 @@ def test_aborts_without_writing_when_over_limit(mocker):
     archive, sheet = _run(mocker, rows)
 
     with pytest.raises(TooManyArchiveRowsError):
-        archive_out_of_stock(CONFIG, FakeRepository(archive))
+        archive_out_of_stock(CONFIG, FakeRepository(archive), today=TODAY)
 
     assert archive.appended == []
     assert sheet._worksheet.spreadsheet.requests == []

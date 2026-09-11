@@ -37,7 +37,13 @@ class UnavailableRepository:
         raise RuntimeError("APIError: [503]: The service is currently unavailable.")
 
 
-HEADERS = ["ASIN", "販売可能\n(fulfillableQuantity)"]
+HEADERS = [
+    "ASIN",
+    "販売可能\n(fulfillableQuantity)",
+    "受領中\n(inboundReceivingQuantity)",
+    "転送中\n(pendingTransshipmentQuantity)",
+    "処理中\n(fcProcessingQuantity)",
+]
 
 
 def _repo(values: list[list[str]]) -> FakeRepository:
@@ -45,7 +51,14 @@ def _repo(values: list[list[str]]) -> FakeRepository:
 
 
 def test_returns_totals_per_asin():
-    repo = _repo([HEADERS, ["B001", "83"], ["B002", "1,445"], ["B001", "17"]])
+    repo = _repo(
+        [
+            HEADERS,
+            ["B001", "83", "0", "0", "0"],
+            ["B002", "1,445", "0", "0", "0"],
+            ["B001", "17", "0", "0", "0"],
+        ]
+    )
 
     assert _load_asin_to_available_stock(repo, "sheet") == {"B001": 100, "B002": 1445}
 
