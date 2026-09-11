@@ -21,7 +21,7 @@ PLAN_COL = "納品プラン"
 
 def fill_sku_fnsku_from_shipment(config: AppConfig, repo: BaseSheetsRepository) -> None:
     creator = InboundPlanCreator(
-        get_auth_token(config.api_key, config.api_secret, config.refresh_token)
+        get_auth_token()
     )
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sku_col = sheet._get_column_index_by_name(SKU_COL) + 1

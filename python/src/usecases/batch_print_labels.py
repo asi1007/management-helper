@@ -33,7 +33,7 @@ def batch_print_labels(
     category_filter: list[str] | None = None,
     plan_name_suffix: str = "",
 ) -> None:
-    access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
+    access_token = get_auth_token()
 
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.filter("状態", ["梱包依頼必要"])

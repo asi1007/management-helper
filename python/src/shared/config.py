@@ -48,9 +48,6 @@ class AppConfig:
     inspection_master_sheet_gid: str
     inspection_template_sheet_id: str
     inspection_template_sheet_gid: str
-    api_key: str
-    api_secret: str
-    refresh_token: str
     keepa_api_key: str
     label_dir: str
     instruction_dir: str
@@ -74,9 +71,6 @@ class AppConfig:
             inspection_master_sheet_gid=os.getenv("INSPECTION_MASTER_SHEET_GID", ""),
             inspection_template_sheet_id=os.getenv("INSPECTION_TEMPLATE_SHEET_ID", ""),
             inspection_template_sheet_gid=os.getenv("INSPECTION_TEMPLATE_SHEET_GID", ""),
-            api_key=os.getenv("API_KEY", ""),
-            api_secret=os.getenv("API_SECRET", ""),
-            refresh_token=os.getenv("REFRESH_TOKEN", ""),
             keepa_api_key=os.getenv("KEEPA_API_KEY", ""),
             label_dir=os.getenv("LABEL_DIR", DEFAULT_LABEL_DIR),
             instruction_dir=os.getenv("INSTRUCTION_DIR", DEFAULT_INSTRUCTION_DIR),

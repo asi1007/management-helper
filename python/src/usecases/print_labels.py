@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def generate_labels_and_instructions(
     config: AppConfig, repo: BaseSheetsRepository, drive_service: Any, row_numbers: list[int]
 ) -> None:
-    access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
+    access_token = get_auth_token()
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.get_rows_by_numbers(row_numbers)
     fill_missing_sku_fnsku(repo, sheet)

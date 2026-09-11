@@ -204,7 +204,7 @@ def run_classification(
     overwrite: bool = False,
     dry_run: bool = False,
 ) -> list[ClassificationOutcome]:
-    access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
+    access_token = get_auth_token()
     sales = SalesSheet(repo)
     creator = InboundPlanCreator(auth_token=access_token)
     resolve_sku = _make_sku_resolver(access_token)

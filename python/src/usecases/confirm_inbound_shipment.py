@@ -45,7 +45,7 @@ def confirm_inbound_shipment(
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.get_rows_by_numbers(row_numbers)
     inbound_plan_id = _resolve_inbound_plan_id(sheet)
-    creator = InboundPlanCreator(get_auth_token(config.api_key, config.api_secret, config.refresh_token))
+    creator = InboundPlanCreator(get_auth_token())
 
     _apply_packing(creator, inbound_plan_id, cartons)
     placement_option_id, shipment_id = _apply_placement(creator, inbound_plan_id)

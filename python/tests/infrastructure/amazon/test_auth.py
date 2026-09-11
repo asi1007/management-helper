@@ -1,20 +1,34 @@
-from unittest.mock import patch, MagicMock
+from pathlib import Path
+
 import pytest
+from amazon_api import reset_shared_clients, shared_spapi_client
+from amazon_api.testing import FakeSession, token_response
+
 from infrastructure.amazon.auth import get_auth_token
 
-class TestGetAuthToken:
-    def test_returns_access_token(self):
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"access_token": "test-token-123"}
-        mock_response.raise_for_status = MagicMock()
-        with patch("infrastructure.amazon.auth.httpx.post", return_value=mock_response):
-            token = get_auth_token(api_key="key", api_secret="secret", refresh_token="refresh")
-        assert token == "test-token-123"
 
-    def test_raises_on_missing_token(self):
-        mock_response = MagicMock()
-        mock_response.json.return_value = {}
-        mock_response.raise_for_status = MagicMock()
-        with patch("infrastructure.amazon.auth.httpx.post", return_value=mock_response):
-            with pytest.raises(KeyError):
-                get_auth_token(api_key="key", api_secret="secret", refresh_token="refresh")
+@pytest.fixture(autouse=True)
+def master(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    path = tmp_path / "sp.env"
+    path.write_text("API_KEY=cid\nAPI_SECRET=secret\nREFRESH_TOKEN=rt\n", encoding="utf-8")
+    monkeypatch.setenv("SPAPI_CREDENTIALS_MASTER", str(path))
+    reset_shared_clients()
+    yield
+    reset_shared_clients()
+
+
+class TestGetAuthToken:
+    def test_共有マスターのトークンを返す(self):
+        session = FakeSession([token_response(access_token="test-token-123")])
+        shared_spapi_client(session=session)
+
+        assert get_auth_token() == "test-token-123"
+
+    def test_二度目はLWAを叩かない(self):
+        session = FakeSession([token_response()])
+        shared_spapi_client(session=session)
+
+        get_auth_token()
+        get_auth_token()
+
+        assert len(session.urls_of("auth/o2/token")) == 1

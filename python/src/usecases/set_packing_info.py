@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def set_packing_info(config: AppConfig, repo: BaseSheetsRepository, row_numbers: list[int]) -> None:
-    access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
+    access_token = get_auth_token()
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     sheet.get_rows_by_numbers(row_numbers)
     plan_cell = str(sheet.data[0].get("納品プラン") or "").strip() if sheet.data else ""

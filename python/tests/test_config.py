@@ -16,15 +16,11 @@ class TestAppConfig:
         monkeypatch.setenv("INSPECTION_MASTER_SHEET_GID", "414729247")
         monkeypatch.setenv("INSPECTION_TEMPLATE_SHEET_ID", "template-id")
         monkeypatch.setenv("INSPECTION_TEMPLATE_SHEET_GID", "1711200534")
-        monkeypatch.setenv("API_KEY", "test-api-key")
-        monkeypatch.setenv("API_SECRET", "test-api-secret")
-        monkeypatch.setenv("REFRESH_TOKEN", "test-refresh-token")
         monkeypatch.setenv("KEEPA_API_KEY", "test-keepa-key")
         config = AppConfig.from_env()
         assert config.credentials_file == str(creds)
         assert config.sheet_id == "test-sheet-id"
         assert config.purchase_sheet_name == "仕入管理"
-        assert config.api_key == "test-api-key"
         assert config.keepa_api_key == "test-keepa-key"
 
     def test_from_env_uses_defaults(self, monkeypatch):

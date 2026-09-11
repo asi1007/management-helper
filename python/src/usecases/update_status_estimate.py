@@ -24,7 +24,7 @@ EXCLUDED_STATUSES = ("在庫あり", "在庫なし")
 
 def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> None:
     fill_sku_fnsku_from_shipment(config, repo)
-    access_token = get_auth_token(config.api_key, config.api_secret, config.refresh_token)
+    access_token = get_auth_token()
     creator = InboundPlanCreator(access_token)
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
     target_rows = _select_target_rows(sheet)

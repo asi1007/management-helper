@@ -39,7 +39,7 @@ def inquire_undelivered(
     today: date | None = None,
 ) -> dict[str, Any]:
     reference_date = today or date.today()
-    creator = InboundPlanCreator(get_auth_token(config.api_key, config.api_secret, config.refresh_token))
+    creator = InboundPlanCreator(get_auth_token())
     sheet = PurchaseSheet(repo, config.sheet_id, config.purchase_sheet_name)
 
     shipments = _collect_undelivered_shipments(sheet, creator, reference_date)
