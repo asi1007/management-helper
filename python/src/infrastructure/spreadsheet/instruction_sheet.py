@@ -25,10 +25,10 @@ class InstructionSheet:
         self._keepa_api_key = keepa_api_key
         self._access_token = access_token
 
-    def create(self, data: list[Any]) -> Path:
+    def create(self, data: list[Any], require_images: bool = True) -> Path:
         rows = self._extract_rows(data)
         plan_name = self._generate_plan_name(data)
-        images = self._collect_images(rows)
+        images = self._collect_images(rows, require_images=require_images)
 
         wb = load_workbook(str(TEMPLATE_PATH))
         ws = wb.active
@@ -106,12 +106,17 @@ class InstructionSheet:
             ws.cell(row=row_num, column=5, value=row_data["remarks"])
             ws.cell(row=row_num, column=6, value=row_data["order_number"])
 
-            img = XlImage(io.BytesIO(images[row_data["asin"]]))
+            image = images.get(row_data["asin"])
+            if image is None:
+                continue
+            img = XlImage(io.BytesIO(image))
             img.width = 75
             img.height = 75
             ws.add_image(img, f"A{row_num}")
 
-    def _collect_images(self, rows: list[dict[str, str]]) -> dict[str, bytes]:
+    def _collect_images(
+        self, rows: list[dict[str, str]], require_images: bool = True
+    ) -> dict[str, bytes]:
         images: dict[str, bytes] = {}
         missing: list[str] = []
         for asin in self._unique_asins(rows):
@@ -123,6 +128,11 @@ class InstructionSheet:
                 missing.append(asin)
                 continue
             images[asin] = image
+        if missing and not require_images:
+            # 自宅発送は事務所へ送るだけで、FNSKUラベルも検品指示書も作らない。
+            # 画像は現物照合のためのものなので、無くても作業は成立する。
+            logger.warning("商品画像なしで指示書を作ります: %s", ", ".join(missing))
+            return images
         if missing:
             raise RuntimeError(
                 "指示書に載せる商品画像が取得できません: " + ", ".join(missing) +

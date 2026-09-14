@@ -212,6 +212,34 @@ launchd には登録していない（不可逆操作のため手動実行）。
 ### 不良品登録フロー (`recordDefect()`)
 自宅発送シートの選択行 → UI入力（数量・理由・コメント）→ 対応する仕入管理行の購入数を減算 → 数量0なら行削除 → 作業記録に追記
 
+## 新商品が受領されたら Todoist へ販売開始タスク（`notify-launch-ready`）
+
+初回仕入の在庫が FBA に受領されたら、**「◯◯ を販売開始にする」タスクを Todoist に1件**作る。
+中身は **広告の出稿**と **Vine への登録**（Linear の工程6・7と同じ作業）。
+
+| 項目 | 値 |
+|---|---|
+| 対象 | 仕入管理シートで **`仕入回数` = 1 かつ `受領日` が入っている**行 |
+| 実行 | `com.wada.update-inventory-estimate`（**日4回**）の在庫更新の直後 |
+| 通知済みの記録 | `python/.launch_ready_notified.json`（ASINの一覧） |
+
+- **`仕入回数` 列は `auto-order` が発注時に書く。** 定義と算出方法は
+  `procurements/auto-order/CLAUDE.md` の「仕入回数」を見ること。ここでは読むだけ
+- **`状態` 列は条件に使わない。** 状態は自分たちが書く列から導出される数式なので、
+  入力条件にすると循環する（上の「状態ゲートによる自己ロック」と同じ罠）
+- **初回実行は記録だけで終わる。** 通知済みファイルが無いときは、その時点で条件を満たす
+  商品を全部「通知済み」として書き込み、**タスクは作らない**。これが無いと、
+  既に販売中の新商品（2026-09-14 時点で10件）にまとめてタスクが立つ
+- **送信できなかった分は通知済みにしない。** `TODOIST_API_TOKEN` 未設定などで
+  作られなかった商品は、設定を直した次の回に拾い直せる
+- 通知済みファイルを消すと、次の実行が「初回」として再び記録だけを行う。
+  作り直したいときはこれで戻せる
+
+```bash
+python3 main.py notify-launch-ready --dry-run   # 対象を表示するだけ
+python3 main.py notify-launch-ready
+```
+
 ## 納品分類の判定（`classify-delivery`）
 
 新商品の「納品分類」（ノーマル / ファッション）を Amazon に実際に聞いて決め、売上/日シートへ書く。
@@ -279,3 +307,21 @@ shipment ID を集め、`fba/inbound/v0/shipments` で `DestinationFulfillmentCe
 - **ライブラリ**: Moment.js（GASライブラリ版）、Drive API（Advanced Services）が利用可能
 - **列番号管理**: SettingSheetで動的管理が原則だが、一部（CW列=101等）はハードコードされている。ヘッダーベースの列特定に移行中
 - **SP-APIレート制限**: 特に納品プラン作成時はポーリング（5秒間隔、5分タイムアウト）で対応
+
+## 共有ライブラリ（amazon_api）の解決
+
+SP-API の認証は `automation/shared/amazon-api` に集約されている。`.env` には認証情報を持たない。
+
+**このリポジトリは `.venv` を持たない**ので、site-packages への symlink（`link_into_venv.sh`）が使えない。
+代わりに `main.py` と `tests/conftest.py` が `automation/shared/*/src` を `sys.path` に入れる。
+
+| 実行経路 | 誰が通すか |
+|---|---|
+| launchd | ラッパー `ops/launchd/scripts/notify-on-failure.sh` が `PYTHONPATH` を通す |
+| 手で叩く / pytest | **`main.py` と `conftest.py` が自力で解決する** |
+
+場所は `AUTOMATION_SHARED_ROOT` があればそれ、無ければ `python/` から 3 つ上の `shared/`。
+ラッパーと同じ環境変数名なので、移設するときは両方に効く。
+
+2026-09-14、共有ライブラリ化の直後に `ModuleNotFoundError: amazon_api` で全コマンドが止まった。
+launchd は動いていたが手動実行だけが落ちるので気づきにくい。**`env -u PYTHONPATH` で検証すること。**

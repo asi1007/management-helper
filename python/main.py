@@ -1,9 +1,28 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+
+
+def _add_shared_libraries_to_path() -> None:
+    """automation/shared/*/src を import できるようにする。
+
+    .venv を持たないので site-packages への symlink が使えない。
+    launchd はラッパーが PYTHONPATH を通すが、手で叩くときは何も通らないため
+    ここで自力で解決する（2026-09-14 に amazon_api が見つからず全コマンドが止まった）。
+    """
+    default_root = Path(__file__).resolve().parents[3] / "shared"
+    shared_root = Path(os.environ.get("AUTOMATION_SHARED_ROOT", default_root))
+    for library in sorted(shared_root.glob("*/src")):
+        path = str(library)
+        if path not in sys.path:
+            sys.path.insert(0, path)
+
+
+_add_shared_libraries_to_path()
 
 import click
 
@@ -122,6 +141,19 @@ def update_inventory() -> None:
     from usecases.update_inventory_estimate_from_stock import update_inventory_estimate
     config, repo = _get_config_and_repo()
     update_inventory_estimate(config, repo)
+
+
+@cli.command()
+@click.option("--dry-run", is_flag=True, help="タスクを作らず対象だけ表示する")
+def notify_launch_ready(dry_run: bool) -> None:
+    from usecases.notify_launch_ready import list_launch_ready, notify_launch_ready as run
+    config, repo = _get_config_and_repo()
+    if dry_run:
+        for product in list_launch_ready(config, repo):
+            click.echo(f"{product.asin} 受領日{product.received_date} 在庫{product.inventory_quantity} {product.product_name}")
+        return
+    created = run(config, repo)
+    click.echo(f"販売開始タスク: {created}件")
 
 
 @cli.command()
