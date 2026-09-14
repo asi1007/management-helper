@@ -9,8 +9,8 @@ from infrastructure.todoist.stock_shortfall_notifier import (
 )
 
 SHORTFALLS = [
-    StockShortfall(asin="B0DHTN6C5P", fba_quantity=2156, assigned_quantity=0),
-    StockShortfall(asin="B0FN4L3TJC", fba_quantity=4713, assigned_quantity=4000),
+    StockShortfall(asin="B0DHTN6C5P", fba_quantity=2156, capacity_quantity=0),
+    StockShortfall(asin="B0FN4L3TJC", fba_quantity=4713, capacity_quantity=4000),
 ]
 
 
@@ -48,6 +48,14 @@ def test_creates_one_task_listing_every_shortfall() -> None:
     assert "B0DHTN6C5P" in payload["description"]
     assert "https://www.amazon.co.jp/dp/B0FN4L3TJC" in payload["description"]
     assert payload["due_date"] == "2026-09-11"
+
+
+def test_describes_the_capacity_not_the_assignment() -> None:
+    # 受け皿は「在庫あり行への配分 + 受領中の行の購入数」で、配分量そのものではない
+    session = FakeSession()
+    StockShortfallNotifier(api_token="t", session=session).notify(SHORTFALLS, "2026-09-11")
+
+    assert "受け皿 4,000" in session.calls[0]["json"]["description"]
 
 
 def test_sends_the_bearer_token() -> None:

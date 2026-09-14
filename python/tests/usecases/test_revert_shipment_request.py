@@ -21,8 +21,12 @@ class _Row:
 
 
 class TestClearedColumns:
-    def test_クリアするのは3列だけ(self) -> None:
-        assert CLEARED_COLUMNS == ("梱包依頼日", "プラン別名", "納品プラン")
+    def test_クリアするのは4列だけ(self) -> None:
+        assert CLEARED_COLUMNS == ("梱包依頼日", "プラン別名", "納品プラン", "受領開始日")
+
+    def test_受領開始日も消さないと受領中のまま残る(self) -> None:
+        # 納品プランを消しても受領開始日が残ると ifs が「受領中」を返し続ける
+        assert "受領開始日" in CLEARED_COLUMNS
 
     def test_数量や状態やSKUには触れない(self) -> None:
         for forbidden in ("SKU", "FNSKU", "購入数", "状態", "ASIN", "在庫数", "受領日"):

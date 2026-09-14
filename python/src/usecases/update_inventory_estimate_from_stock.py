@@ -14,6 +14,9 @@ from infrastructure.todoist.stock_shortfall_notifier import StockShortfallNotifi
 logger = logging.getLogger(__name__)
 
 INVENTORY_COL = "在庫数"
+PURCHASE_COL = "購入数"
+# 受領が始まった日。空でなく在庫数が空なら、FCは受領中でシートはまだ受け皿を持たない
+RECEIVING_STARTED_COL = "受領開始日"
 STOCK_SHEET_NAME = "stock"
 # FC内にあって、これから売れる数量。
 #   受領中を外すと納品を受領した直後に在庫0と誤判定する。
@@ -58,11 +61,11 @@ def update_inventory_estimate(
         remaining = available
         assigned[asin] = 0
         for row in reversed(rows):
-            purchase_qty = int(row.get("購入数") or 0)
+            purchase_qty = _parse_quantity(row.get(PURCHASE_COL))
             estimated = min(purchase_qty, remaining)
             remaining = max(0, remaining - estimated)
             assigned[asin] += estimated
-            existing = int(row.get(INVENTORY_COL) or 0)
+            existing = _parse_quantity(row.get(INVENTORY_COL))
             if estimated != existing:
                 cell = gspread.utils.rowcol_to_a1(row.row_number, inv_col)
                 updates.append({"range": cell, "values": [[estimated]]})
@@ -73,7 +76,8 @@ def update_inventory_estimate(
         sheet._worksheet.batch_update(updates, value_input_option="USER_ENTERED")
     logger.info("在庫数更新完了: written=%d, asins=%d", len(updates), len(asin_groups))
     # FBAにあるのに行へ収まらない在庫は、受け皿の行が消えた合図。放置すると気づけない
-    shortfalls = collect_shortfalls(asin_to_stock, assigned)
+    capacity = _merge_capacity(assigned, _sum_receiving_quantity(sheet))
+    shortfalls = collect_shortfalls(asin_to_stock, capacity)
     if shortfalls:
         logger.warning(
             "FBA在庫が行に収まっていません: %d件 %d個",
@@ -81,6 +85,46 @@ def update_inventory_estimate(
             sum(s.quantity for s in shortfalls),
         )
     notifier.notify(shortfalls, date.today().isoformat())
+
+
+def _sum_receiving_quantity(sheet: PurchaseSheet) -> dict[str, int]:
+    # 在庫数が入るのは受領率90%を超えてから。それまでFCが受領した分は
+    # FBA在庫には載るのに配分先が無く、未割当として毎回通知されていた。
+    if _column_index_or_none(sheet, RECEIVING_STARTED_COL) is None:
+        logger.warning(
+            "%s列がないため受領中の行を受け皿に数えません", RECEIVING_STARTED_COL
+        )
+        return {}
+    result: dict[str, int] = {}
+    for row in sheet.all_data:
+        asin = _cell(row, "ASIN")
+        if not asin or not _cell(row, RECEIVING_STARTED_COL):
+            continue
+        if _cell(row, INVENTORY_COL):
+            continue
+        result[asin] = result.get(asin, 0) + _parse_quantity(row.get(PURCHASE_COL))
+    return result
+
+
+def _merge_capacity(assigned: dict[str, int], receiving: dict[str, int]) -> dict[str, int]:
+    return {
+        asin: assigned.get(asin, 0) + receiving.get(asin, 0)
+        for asin in set(assigned) | set(receiving)
+    }
+
+
+def _column_index_or_none(sheet: PurchaseSheet, column_name: str) -> int | None:
+    try:
+        return sheet._get_column_index_by_name(column_name)
+    except ValueError:
+        return None
+
+
+def _cell(row: object, column_name: str) -> str:
+    try:
+        return str(row.get(column_name) or "").strip()
+    except (IndexError, ValueError):
+        return ""
 
 
 def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> dict[str, int]:
@@ -109,7 +153,7 @@ def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> 
         if len(row_values) <= last_col:
             continue
         asin = str(row_values[asin_col]).strip()
-        stock = sum(_parse_stock_quantity(row_values[col]) for col in quantity_cols)
+        stock = sum(_parse_quantity(row_values[col]) for col in quantity_cols)
         if asin:
             result[asin] = result.get(asin, 0) + stock
     if not result:
@@ -122,7 +166,7 @@ def _load_asin_to_available_stock(repo: BaseSheetsRepository, sheet_id: str) -> 
     return result
 
 
-def _parse_stock_quantity(value: object) -> int:
+def _parse_quantity(value: object) -> int:
     if value is None:
         return 0
     text = str(value).replace(",", "").strip()

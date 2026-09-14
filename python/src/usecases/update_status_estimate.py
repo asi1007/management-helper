@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 INVENTORY_COL = "在庫数"
 RECEIVED_DATE_COL = "受領日"
+# FCが受領を始めた日。在庫数が入るより前に立つので、
+# FBA在庫があるのに受け皿が無い期間を示せる
+RECEIVING_STARTED_COL = "受領開始日"
 STATUS_COL = "状態"
 PLAN_COL = "納品プラン"
 EXCLUDED_STATUSES = ("在庫あり", "在庫なし")
@@ -52,6 +55,7 @@ def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> Non
         status = status_cache.get(shipment_id, "")
         all_items = _get_all_items(creator, inbound_plan_id, shipment_id, items_cache)
         qty_shipped, qty_received = _sum_quantities_for_sku(all_items, sku)
+        _mark_receiving_started(sheet, row, qty_received)
         if _is_received(status, qty_shipped, qty_received):
             row_num = row.row_number
             inv_col = sheet._get_column_index_by_name(INVENTORY_COL) + 1
@@ -65,6 +69,23 @@ def update_status_estimate(config: AppConfig, repo: BaseSheetsRepository) -> Non
             logger.info("行%d: 納品済み (status=%s, shipped=%d, received=%d)", row_num, status, qty_shipped, qty_received)
         else:
             logger.info("行%d: まだ納品中 (status=%s, shipped=%d, received=%d)", row.row_number, status, qty_shipped, qty_received)
+
+
+def _should_mark_receiving_started(qty_received: int, current_value: str) -> bool:
+    return qty_received > 0 and not str(current_value or "").strip()
+
+
+def _mark_receiving_started(sheet: PurchaseSheet, row: BaseRow, qty_received: int) -> None:
+    try:
+        col = sheet._get_column_index_by_name(RECEIVING_STARTED_COL) + 1
+        current = row.get(RECEIVING_STARTED_COL)
+    except (ValueError, IndexError):
+        logger.warning("%s列がないため受領開始日を記録しません", RECEIVING_STARTED_COL)
+        return
+    if not _should_mark_receiving_started(qty_received, current):
+        return
+    sheet.write_cell(row.row_number, col, datetime.now().strftime("%Y/%m/%d"))
+    logger.info("行%d: 受領開始 (received=%d)", row.row_number, qty_received)
 
 
 def _select_target_rows(sheet: PurchaseSheet) -> list[BaseRow]:

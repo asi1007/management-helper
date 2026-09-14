@@ -17,8 +17,9 @@ from infrastructure.spreadsheet.purchase_sheet import PurchaseSheet
 
 logger = logging.getLogger(__name__)
 
-# 状態列は数式なので書かない。この3列を空にすれば ifs が「梱包依頼必要」に戻る
-CLEARED_COLUMNS = ("梱包依頼日", "プラン別名", "納品プラン")
+# 状態列は数式なので書かない。この4列を空にすれば ifs が「梱包依頼必要」に戻る。
+# 受領開始日を残すと ifs が「受領中」を返し続ける
+CLEARED_COLUMNS = ("梱包依頼日", "プラン別名", "納品プラン", "受領開始日")
 FULL_PLAN_ID_PATTERN = r"wf[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
 SELF_ACCOUNT_ID = 5437457
 BODY_KEYWORD = "梱包指示書"

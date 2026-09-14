@@ -70,10 +70,11 @@ def task_description(shortfalls: list[StockShortfall]) -> str:
     lines = [
         "FBAにある在庫が仕入管理のロット行に割り当てきれていません。",
         "受け皿の行が消えたか、まだ登録されていない可能性があります。",
+        "（受領中の行は購入数を受け皿として数えているので、部分受領は出ません）",
         "",
     ]
     lines += [
-        f"- {s.product_url} 実FBA {s.fba_quantity:,} / 割当 {s.assigned_quantity:,} "
+        f"- {s.product_url} 実FBA {s.fba_quantity:,} / 受け皿 {s.capacity_quantity:,} "
         f"→ 未割当 {s.quantity:,}"
         for s in shortfalls
     ]
