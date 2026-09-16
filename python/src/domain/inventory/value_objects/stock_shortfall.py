@@ -3,6 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+# 顧客返品が再入庫すると、売り切って受け皿の無くなった行のASINに数個だけFBA在庫が戻る。
+# 本来は返品数を受け皿として持たせるべきだが、この規模の差は運用上の打ち手が無いので
+# 通知しないことにした（= 返品由来かどうかの区別は諦めている）。2026-09-16
+IGNORED_QUANTITY = 5
+
+
 @dataclass(frozen=True)
 class StockShortfall:
     asin: str
@@ -26,6 +32,6 @@ def collect_shortfalls(
             asin=asin, fba_quantity=stock, capacity_quantity=asin_to_capacity.get(asin, 0)
         )
         for asin, stock in asin_to_stock.items()
-        if stock > 0 and stock > asin_to_capacity.get(asin, 0)
+        if stock > 0 and stock - asin_to_capacity.get(asin, 0) > IGNORED_QUANTITY
     ]
     return sorted(shortfalls, key=lambda s: -s.quantity)

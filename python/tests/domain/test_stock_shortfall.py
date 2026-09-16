@@ -36,3 +36,19 @@ def test_a_row_that_is_being_received_counts_toward_the_capacity() -> None:
     result = collect_shortfalls({"B001": 4682}, {"B001": 3561 + 1514})
 
     assert result == []
+
+
+def test_ignores_a_gap_small_enough_to_be_a_returned_unit() -> None:
+    assert collect_shortfalls({"B001": 105}, {"B001": 100}) == []
+
+
+def test_reports_a_gap_just_over_the_ignored_size() -> None:
+    result = collect_shortfalls({"B001": 106}, {"B001": 100})
+
+    assert result == [StockShortfall(asin="B001", fba_quantity=106, capacity_quantity=100)]
+
+
+def test_keeps_only_the_gaps_worth_acting_on() -> None:
+    result = collect_shortfalls({"B001": 103, "B002": 120}, {"B001": 100, "B002": 100})
+
+    assert [s.asin for s in result] == ["B002"]

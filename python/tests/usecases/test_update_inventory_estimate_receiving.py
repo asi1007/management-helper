@@ -102,9 +102,17 @@ def test_a_received_row_is_not_counted_twice(mocker) -> None:
 def test_an_asin_without_any_row_is_still_reported(mocker) -> None:
     rows = [_row(102, "B001", "在庫あり", "2000", "2000")]
 
-    notifier = _run(mocker, rows, {"B001": 2000, "B098J9VPW3": 1})
+    notifier = _run(mocker, rows, {"B001": 2000, "B098J9VPW3": 40})
 
-    assert [(s.asin, s.quantity) for s in notifier.calls[0]] == [("B098J9VPW3", 1)]
+    assert [(s.asin, s.quantity) for s in notifier.calls[0]] == [("B098J9VPW3", 40)]
+
+
+def test_a_handful_of_units_without_any_row_is_not_reported(mocker) -> None:
+    rows = [_row(102, "B001", "在庫あり", "2000", "2000")]
+
+    notifier = _run(mocker, rows, {"B001": 2000, "B098J9VPW3": 5})
+
+    assert notifier.calls == [[]]
 
 
 def test_a_malformed_purchase_quantity_does_not_break_the_run(mocker) -> None:
