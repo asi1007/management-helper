@@ -85,7 +85,7 @@ def batch_print_labels(
         else:
             label_paths = _create_label_pdf(rows, access_token, config, category)
             inspection_path = _create_inspection_sheet(config, repo, rows, category)
-        instruction_path = _create_instruction_sheet(config, rows, access_token, require_images=not is_home)
+        instruction_path = _create_instruction_sheet(config, rows, access_token)
 
         _write_to_sheet(sheet, str(instruction_path), plan_name_suffix)
 
@@ -390,14 +390,12 @@ def _to_float(value: Any) -> float:
         return 0.0
 
 
-def _create_instruction_sheet(
-    config: AppConfig, data: list[Any], access_token: str, require_images: bool = True
-) -> Path:
+def _create_instruction_sheet(config: AppConfig, data: list[Any], access_token: str) -> Path:
     save_dir = Path(config.instruction_dir)
     instruction = InstructionSheet(
         save_dir=save_dir, keepa_api_key=config.keepa_api_key, access_token=access_token
     )
-    return instruction.create(data, require_images=require_images)
+    return instruction.create(data)
 
 
 def _create_inspection_sheet(
