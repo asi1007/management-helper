@@ -14,6 +14,7 @@ SALES_SHEET_ID = "1Z3P0iL19r3gA9-NG8x2e_42pGhrEs_wFMLWLbFvReAw"
 SALES_SHEET_NAME = "売上/日"
 HEADER_SEARCH_LIMIT = 30
 REQUIRED_HEADERS = ["ASIN", "SKU", "fnsku"]
+REMARK_HEADER = "備考"
 DELIVERY_CATEGORY_HEADER = "納品分類"
 
 
@@ -81,6 +82,17 @@ class SalesSheet:
                 result[asin] = {"sku": sku, "fnsku": fnsku}
 
         logger.info("売上/日シートからASIN→SKU/fnsku取得: %d件", len(result))
+        return result
+
+    def load_remark_by_asin(self) -> dict[str, str]:
+        col_map, rows, _ = self._load_table(["ASIN", REMARK_HEADER])
+        result: dict[str, str] = {}
+        for row_values in rows:
+            asin = self._cell(row_values, col_map["ASIN"])
+            remark = self._cell(row_values, col_map[REMARK_HEADER])
+            if asin and remark and asin not in result:
+                result[asin] = remark
+        logger.info("売上/日シートから備考取得: %d件", len(result))
         return result
 
     def load_delivery_category_by_asin(self) -> dict[str, str]:

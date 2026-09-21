@@ -208,6 +208,17 @@ def batch_labels(categories: str | None, air: bool) -> None:
 
 
 @cli.command()
+@click.option("--rows", type=str, default=None, help="仕入管理シートの行番号をカンマ区切りで指定")
+@click.option("--overwrite", is_flag=True, help="既に備考がある行も差し替える（既定は空欄だけ）")
+@click.option("--dry-run", is_flag=True, help="書かずに対象だけ表示")
+def sync_remarks(rows: str | None, overwrite: bool, dry_run: bool) -> None:
+    from usecases.sync_remarks import sync_remarks as run
+    row_numbers = [int(r.strip()) for r in rows.split(",") if r.strip()] if rows else None
+    config, repo = _get_config_and_repo()
+    run(config, repo, row_numbers=row_numbers, overwrite=overwrite, dry_run=dry_run)
+
+
+@cli.command()
 def new_product_shipments() -> None:
     from usecases.new_product_shipment import list_new_product_shipments
     config, repo = _get_config_and_repo()

@@ -86,6 +86,26 @@ class BaseSheet:
         self._worksheet.update_acell(cell_label, formula)
         logger.info("%d行目の%d列に数式を書き込みました", row_num, column_num)
 
+    def update_cells(self, updates: list[tuple[int, str, Any]]) -> int:
+        """(行番号, 列名, 値) をまとめて書く。
+
+        write_cell を繰り返すと 1 セル 1 リクエストになり 60req/min を超える。
+        """
+        if not updates:
+            return 0
+        payload = [
+            {
+                "range": gspread.utils.rowcol_to_a1(
+                    row_number, self._get_column_index_by_name(column_name) + 1
+                ),
+                "values": [[value]],
+            }
+            for row_number, column_name, value in updates
+        ]
+        self._worksheet.batch_update(payload, value_input_option="USER_ENTERED")
+        logger.info("%d セルを一括更新しました", len(payload))
+        return len(payload)
+
     def write_column_by_func(
         self, column_name: str, value_func: Callable[[BaseRow, int], Any | None]
     ) -> int:
