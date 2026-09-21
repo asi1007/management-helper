@@ -27,11 +27,33 @@ LISTINGS_SELLER_ID = "APS8L6SC4MEPF"
 LISTINGS_MARKETPLACE_ID = "A1VC38T7YXB528"
 
 
+def select_rows_by_number(
+    rows: list[BaseRow], row_numbers: list[int] | None
+) -> list[BaseRow]:
+    """指定した行だけに絞る。指定が無ければそのまま返す。
+
+    納品分類だけでは新商品（空輸）と再仕入れ（海上）を分けられない。
+    分類を一時的に書き換えて逃がすと本番の列を触ることになるので、行番号で絞る。
+    存在しない行番号は事故として止める（行番号は archive-out-of-stock で毎日ずれる）。
+    """
+    if not row_numbers:
+        return rows
+    available = {r.row_number for r in rows}
+    missing = sorted(set(row_numbers) - available)
+    if missing:
+        raise ValueError(
+            f"梱包依頼必要の行に見つかりません: {missing} / 対象は {sorted(available)}"
+        )
+    wanted = set(row_numbers)
+    return [r for r in rows if r.row_number in wanted]
+
+
 def batch_print_labels(
     config: AppConfig,
     repo: BaseSheetsRepository,
     category_filter: list[str] | None = None,
     plan_name_suffix: str = "",
+    row_numbers: list[int] | None = None,
 ) -> None:
     access_token = get_auth_token()
 
@@ -41,6 +63,8 @@ def batch_print_labels(
     if not sheet.data:
         click.echo("梱包依頼必要の行がありません")
         return
+
+    sheet.data = select_rows_by_number(sheet.data, row_numbers)
 
     groups = _group_by_delivery_category(sheet.data)
     if category_filter:

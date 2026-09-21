@@ -200,11 +200,19 @@ def arrival_date(row_numbers: tuple[int, ...]) -> None:
 @cli.command()
 @click.option("--categories", type=str, default=None, help="納品分類をカンマ区切りで指定（例: ノーマル,ファッション）")
 @click.option("--air", is_flag=True, help="空輸。プラン別名の末尾に「空輸」を付ける")
-def batch_labels(categories: str | None, air: bool) -> None:
+@click.option("--rows", type=str, default=None, help="仕入管理シートの行番号をカンマ区切りで指定（空輸と海上を分けて出すとき）")
+def batch_labels(categories: str | None, air: bool, rows: str | None) -> None:
     from usecases.batch_print_labels import batch_print_labels
     category_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
+    row_numbers = [int(r.strip()) for r in rows.split(",") if r.strip()] if rows else None
     config, repo = _get_config_and_repo()
-    batch_print_labels(config, repo, category_filter=category_list, plan_name_suffix="空輸" if air else "")
+    batch_print_labels(
+        config,
+        repo,
+        category_filter=category_list,
+        plan_name_suffix="空輸" if air else "",
+        row_numbers=row_numbers,
+    )
 
 
 @cli.command()
