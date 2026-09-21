@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 CLEARED_COLUMNS = ("梱包依頼日", "プラン別名", "納品プラン", "受領開始日")
 FULL_PLAN_ID_PATTERN = r"wf[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
 SELF_ACCOUNT_ID = 5437457
-BODY_KEYWORD = "梱包指示書"
+BODY_TEMPLATE = "【{category}】"
 DELETED_BODY = "[deleted]"
 
 
@@ -57,17 +57,41 @@ def extract_inbound_plan_ids(rows: list[BaseRow]) -> list[str]:
     return found
 
 
-def build_target_keywords(alias: str, year: int) -> list[str]:
-    """プラン別名から、batch-labels が送る投稿を見分ける語を作る。
+# batch-labels --air がプラン別名の末尾にだけ足す語。
+# 指示書とラベルのファイル名は納品分類のままなので、照合語からは外す。
+PLAN_NAME_SUFFIXES = ("空輸",)
 
-    「09/09ノーマル」→ 本文「梱包指示書」/ 指示書「0909ノーマル」/ ラベル「2026-09-09_ノーマル」
+
+def _strip_plan_name_suffix(category: str) -> str:
+    for suffix in PLAN_NAME_SUFFIXES:
+        if category.endswith(suffix):
+            return category[: -len(suffix)]
+    return category
+
+
+def build_target_keywords(alias: str, year: int) -> list[str]:
+    """プラン別名から、batch-labels がその回に送った投稿だけを見分ける語を作る。
+
+    「09/15ファッション1」→ 本文「【ファッション1】」/ 指示書「0915ファッション1」/
+    ラベル「2026-09-15_ファッション1」
+
+    **末尾の「空輸」は落とす。** --air はプラン別名にしか付かず、
+    投稿本文もファイル名も納品分類のままなので、付けたままだと永久に一致しない。
+    指示書 xlsx は「0918ノーマル指示書.xlsx」なので日付付きの語からも落とす。
+
+    **分類名を必ず含めること。** 同じ日に複数グループを送るので「梱包指示書」のような
+    共通語で照合すると他グループや前日分まで巻き込む（2026-09-15 にドライランで7件拾った）。
     """
-    target = str(alias or "").strip()
-    keywords = [BODY_KEYWORD, target.replace("/", "")]
+    target = _strip_plan_name_suffix(str(alias or "").strip())
+    keywords = [target.replace("/", "")]
     matched = re.match(r"(\d{1,2})/(\d{1,2})(.*)", target)
     if matched:
         month, day, category = matched.groups()
+        if category:
+            keywords.append(BODY_TEMPLATE.format(category=category))
         keywords.append(f"{year}-{int(month):02d}-{int(day):02d}_{category}")
+    else:
+        keywords.append(BODY_TEMPLATE.format(category=target))
     return [k for k in keywords if k]
 
 

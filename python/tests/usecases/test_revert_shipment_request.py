@@ -127,7 +127,7 @@ class TestSelectChatworkMessageIds:
 class TestBuildTargetKeywords:
     def test_本文と指示書とラベルの3形式を作る(self) -> None:
         got = build_target_keywords("09/09ノーマル", 2026)
-        assert "梱包指示書" in got
+        assert "【ノーマル】" in got
         assert "0909ノーマル" in got
         assert "2026-09-09_ノーマル" in got
 
@@ -139,3 +139,57 @@ class TestBuildTargetKeywords:
     def test_日付形式でない別名でもファイル名の形は作る(self) -> None:
         got = build_target_keywords("自宅", 2026)
         assert "自宅" in got
+
+
+class TestKeywordsDoNotCatchOtherGroups:
+    """同じ日に複数グループを送るので、分類名まで見ないと他グループを巻き込む"""
+
+    def test_本文は分類名まで含めて照合する(self) -> None:
+        got = build_target_keywords("09/15ファッション1", 2026)
+        assert "【ファッション1】" in got
+        assert "梱包指示書" not in got
+
+    def test_他グループの本文を拾わない(self) -> None:
+        msgs = [
+            _msg("1", 5437457, 1000, "[To:986396]徐雪蘭さん\n【ノーマル】18件の梱包指示書を作成したので送付します。"),
+            _msg("2", 5437457, 1001, "[To:986396]徐雪蘭さん\n【自宅】2件の梱包指示書を作成したので送付します。"),
+            _msg("3", 5437457, 1002, "[To:986396]徐雪蘭さん\n【ファッション1】2件の梱包指示書を作成したので送付します。"),
+        ]
+        keywords = build_target_keywords("09/15ファッション1", 2026)
+        assert select_chatwork_message_ids(msgs, account_id=5437457, since=999, keywords=keywords) == ["3"]
+
+    def test_他グループの添付を拾わない(self) -> None:
+        msgs = [
+            _msg("1", 5437457, 1000, "[download:1]0915ノーマル指示書.xlsx[/download]"),
+            _msg("2", 5437457, 1001, "[download:2]2026-09-15_ノーマル.pdf[/download]"),
+            _msg("3", 5437457, 1002, "[download:3]0915ファッション1指示書.xlsx[/download]"),
+            _msg("4", 5437457, 1003, "[download:4]2026-09-15_ファッション1.pdf[/download]"),
+        ]
+        keywords = build_target_keywords("09/15ファッション1", 2026)
+        assert select_chatwork_message_ids(msgs, account_id=5437457, since=999, keywords=keywords) == ["3", "4"]
+
+    def test_前日の同名グループを拾わない(self) -> None:
+        msgs = [
+            _msg("1", 5437457, 1000, "[download:1]0914自宅指示書.xlsx[/download]"),
+            _msg("2", 5437457, 1001, "[download:2]0915自宅指示書.xlsx[/download]"),
+        ]
+        keywords = build_target_keywords("09/15自宅", 2026)
+        assert select_chatwork_message_ids(msgs, account_id=5437457, since=999, keywords=keywords) == ["2"]
+
+
+def test_空輸の別名でもファイル名と照合できる() -> None:
+    """--air はプラン別名にだけ「空輸」を足す。
+    指示書とラベルのファイル名は納品分類のままなので、照合語からは外す。"""
+    from usecases.revert_shipment_request import build_target_keywords
+
+    keywords = build_target_keywords("09/18ノーマル空輸", 2026)
+    assert "【ノーマル】" in keywords          # 本文
+    assert "2026-09-18_ノーマル" in keywords  # ラベル PDF
+    assert "0918ノーマル" in keywords          # 指示書 xlsx（0918ノーマル指示書.xlsx）
+
+
+def test_空輸でない別名は今までどおり() -> None:
+    from usecases.revert_shipment_request import build_target_keywords
+
+    keywords = build_target_keywords("09/15ファッション1", 2026)
+    assert keywords == ["0915ファッション1", "【ファッション1】", "2026-09-15_ファッション1"]
