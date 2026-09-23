@@ -23,3 +23,7 @@ Thumbs.db
 
 # 実行時の状態（通知済みASIN）
 .launch_ready_notified.json
+
+# Python
+__pycache__/
+*.py[cod]
